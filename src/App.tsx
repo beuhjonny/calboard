@@ -33,6 +33,8 @@ import {
 } from './utils/googleApi';
 import type { TokenResponse } from './utils/googleApi';
 import { fetchLiveWeatherKeyless } from './utils/weatherApi';
+import { subscribeCurrentDisplayPhotos, saveDisplayPhotosBatch } from './utils/firebase';
+import { selectAndFormatDisplayPhotos } from './utils/photoScraper';
 
 // Default mock configuration
 const DEFAULT_CONFIG: DashboardConfig = {
@@ -218,43 +220,41 @@ export default function App() {
     return () => clearInterval(interval);
   }, [config.weatherLocation]);
 
-  // Fetch Google Photos shared album image links
+  // Real-time listener for Firestore Current_Display_Photos collection
+  const [firestorePhotosCount, setFirestorePhotosCount] = useState<number>(0);
+  const [isSyncingPhotos, setIsSyncingPhotos] = useState<boolean>(false);
+
   useEffect(() => {
-    if (!config.googlePhotosSharedLink) {
-      setBackgrounds(DEFAULT_BACKGROUNDS);
-      setBgIndex(0);
-      return;
-    }
-
-    const fetchPhotosList = async () => {
-      try {
-        const urls = await fetchSharedAlbumPhotos(config.googlePhotosSharedLink);
-        if (urls.length > 0) {
-          // Shuffle photo list using Fisher-Yates algorithm for random order
-          const shuffled = [...urls];
-          for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-          }
-          setBackgrounds(shuffled);
-          setBgIndex(0);
-        } else {
-          setBackgrounds(DEFAULT_BACKGROUNDS);
-          setBgIndex(0);
-        }
-      } catch (err) {
-        console.error('Error fetching Google Photos shared album photos:', err);
+    const unsubscribe = subscribeCurrentDisplayPhotos((photos) => {
+      if (photos && photos.length > 0) {
+        const urls = photos.map(p => p.url);
+        setBackgrounds(urls);
+        setFirestorePhotosCount(urls.length);
+        setBgIndex((prev) => prev % urls.length);
+      } else {
         setBackgrounds(DEFAULT_BACKGROUNDS);
-        setBgIndex(0);
+        setFirestorePhotosCount(0);
       }
-    };
+    });
 
-    fetchPhotosList();
+    return () => unsubscribe();
+  }, []);
 
-    // Refetch list every 15 minutes to pick up newly added photos
-    const interval = setInterval(fetchPhotosList, 15 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [config.googlePhotosSharedLink]);
+  const triggerAlbumSyncToFirestore = async () => {
+    const albumUrl = config.googlePhotosSharedLink || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
+    setIsSyncingPhotos(true);
+    try {
+      const urls = await fetchSharedAlbumPhotos(albumUrl);
+      if (urls.length > 0) {
+        const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
+        await saveDisplayPhotosBatch(displayPhotos);
+      }
+    } catch (err) {
+      console.error('Error syncing photos to Firestore:', err);
+    } finally {
+      setIsSyncingPhotos(false);
+    }
+  };
 
   // Fetch Calendar and Tasks on a loop
   useEffect(() => {
@@ -1025,7 +1025,7 @@ export default function App() {
               />
             </div>
 
-            {/* Public shared album link input */}
+            {/* Public shared album link & Firestore Sync status */}
             <div className="settings-group">
               <label className="settings-label">Google Photos Album Share Link</label>
               <input
@@ -1036,21 +1036,29 @@ export default function App() {
                 className="settings-input"
               />
               <div style={{ padding: '0.65rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', marginTop: '0.45rem' }}>
-                <span className="settings-label" style={{ fontSize: '0.78rem' }}>Sync Status:</span>
-                <p className="settings-subtext" style={{ fontSize: '0.78rem', color: (config.googlePhotosSharedLink && backgrounds !== DEFAULT_BACKGROUNDS) ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)', fontWeight: 'bold', marginTop: '0.15rem' }}>
-                  {!config.googlePhotosSharedLink 
-                    ? '⚠ No Album Link Added' 
-                    : (backgrounds !== DEFAULT_BACKGROUNDS) 
-                      ? `✓ Syncing ${backgrounds.length} wallpapers from album` 
-                      : '⚠ Link invalid or failed to read album'}
+                <span className="settings-label" style={{ fontSize: '0.78rem' }}>Firestore Database Sync Status:</span>
+                <p className="settings-subtext" style={{ fontSize: '0.78rem', color: firestorePhotosCount > 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)', fontWeight: 'bold', marginTop: '0.15rem' }}>
+                  {firestorePhotosCount > 0
+                    ? `✓ Firestore Database: ${firestorePhotosCount} active randomized 1080p wallpapers` 
+                    : '⚠ Initializing Firestore database sync...'}
                 </p>
-                <p className="settings-subtext" style={{ fontSize: '0.72rem', marginTop: '0.45rem', lineHeight: '1.4' }}>
-                  1. Open your album in Google Photos on your phone or web.<br/>
-                  2. Click <strong>Share</strong> and generate a public link.<br/>
-                  3. Copy and paste that link above.<br/>
-                  <em>Note: No API Keys or Google Client configuration is required for wallpapers using this method!</em>
-                </p>
+                <button
+                  type="button"
+                  onClick={triggerAlbumSyncToFirestore}
+                  disabled={isSyncingPhotos}
+                  className="settings-btn settings-btn-primary"
+                  style={{ marginTop: '0.5rem', width: '100%', padding: '0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                >
+                  <RefreshCw size={14} className={isSyncingPhotos ? 'animate-spin' : ''} />
+                  {isSyncingPhotos ? 'Syncing Album to Firestore...' : 'Sync New 24-Photo Batch to Firestore'}
+                </button>
               </div>
+              <p className="settings-subtext" style={{ fontSize: '0.72rem', marginTop: '0.45rem', lineHeight: '1.4' }}>
+                1. Open your album in Google Photos on your phone or web.<br/>
+                2. Click <strong>Share</strong> and generate a public link.<br/>
+                3. Copy and paste that link above.<br/>
+                <em>Note: No API Keys or Google Client configuration is required for wallpapers using this method!</em>
+              </p>
             </div>
           </div>
 
