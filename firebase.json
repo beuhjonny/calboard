@@ -1,6 +1,5 @@
 {
   "hosting": {
-    "site": "calboard-app",
     "public": "dist",
     "ignore": [
       "firebase.json",
