@@ -7,7 +7,7 @@ export interface DashboardConfig {
   googlePhotosSharedLink: string;
   glassOpacity: number;
   bgOverlayOpacity: number;
-  photoFitMode: 'ambient' | 'cover';
+  photoFitMode: 'bestfit' | 'ambient' | 'cover';
 }
 
 export interface GoogleCalendarEvent {

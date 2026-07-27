@@ -46,7 +46,7 @@ const DEFAULT_CONFIG: DashboardConfig = {
   googlePhotosSharedLink: '',
   glassOpacity: 45,
   bgOverlayOpacity: 50,
-  photoFitMode: 'ambient',
+  photoFitMode: 'bestfit',
 };
 
 // Curated stunning high-res photos for background if Google Photos isn't linked
@@ -974,23 +974,33 @@ export default function App() {
             {/* Photo Fit Mode selection */}
             <div className="settings-group" style={{ marginTop: '0.85rem' }}>
               <label className="settings-label">Photo Fit Mode</label>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem' }}>
                 <button
                   type="button"
-                  onClick={() => setConfig({ ...config, photoFitMode: 'ambient' })}
-                  className={`settings-btn ${(config.photoFitMode || 'ambient') === 'ambient' ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                  onClick={() => setConfig({ ...config, photoFitMode: 'bestfit' })}
+                  className={`settings-btn ${(config.photoFitMode || 'bestfit') === 'bestfit' ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', fontSize: '0.78rem', textAlign: 'left' }}
                 >
-                  ✨ Smart Ambient (Full Photo)
+                  🌟 Smart Best Fit (Recommended)
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setConfig({ ...config, photoFitMode: 'cover' })}
-                  className={`settings-btn ${config.photoFitMode === 'cover' ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
-                >
-                  🖼 Crop & Fill Screen
-                </button>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, photoFitMode: 'cover' })}
+                    className={`settings-btn ${config.photoFitMode === 'cover' ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                    style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                  >
+                    🖼 Crop & Fill Screen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, photoFitMode: 'ambient' })}
+                    className={`settings-btn ${config.photoFitMode === 'ambient' ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                    style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                  >
+                    🔍 Full Photo Contain
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1023,6 +1033,27 @@ export default function App() {
                 onChange={(e) => setConfig({ ...config, photoRefreshMinutes: Math.max(1, parseInt(e.target.value) || 1) })}
                 className="settings-input"
               />
+            </div>
+
+            {/* Active Synced Libraries Card */}
+            <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+              <label className="settings-label">Active Synced Libraries</label>
+              <div className="synced-library-card">
+                <div className="synced-library-header">
+                  <div className="synced-library-title">
+                    <FolderHeart size={16} style={{ color: 'var(--color-accent-emerald)' }} />
+                    <span>Kids Shared Album</span>
+                  </div>
+                  <span className="synced-library-badge">Synced</span>
+                </div>
+                <div className="synced-library-meta">
+                  <p><strong>Database Target:</strong> Firestore collection <code>Current_Display_Photos</code></p>
+                  <p><strong>Active Pool:</strong> {firestorePhotosCount > 0 ? `${firestorePhotosCount} randomized 1080p wallpapers` : 'Initializing sync...'}</p>
+                  <p className="synced-library-note">
+                    💡 <em>Syncing a new 24-photo batch overwrites the 24 active display slots in Firestore with 24 freshly randomized photos sliced from your 302-photo album.</em>
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Public shared album link & Firestore Sync status */}

@@ -83,6 +83,59 @@ body {
   z-index: 1;
 }
 
+/* Synced Libraries Card */
+.synced-library-card {
+  padding: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  margin-top: 0.5rem;
+}
+
+.synced-library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.synced-library-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: white;
+}
+
+.synced-library-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-accent-emerald);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.synced-library-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  word-break: break-all;
+}
+
+.synced-library-note {
+  font-size: 0.7rem;
+  margin-top: 0.3rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.55);
+}
+
 /* Main Crisp Photo Layer */
 .bg-image-main {
   position: absolute;
@@ -96,6 +149,12 @@ body {
 }
 
 /* Photo Fit Modes */
+.bg-container.fit-bestfit .bg-image-main {
+  object-fit: cover;
+  object-position: center 30%;
+  animation: kenburns-subtle 40s infinite alternate linear;
+}
+
 .bg-container.fit-ambient .bg-image-main {
   object-fit: contain;
   animation: kenburns-subtle 40s infinite alternate linear;
@@ -103,6 +162,7 @@ body {
 
 .bg-container.fit-cover .bg-image-main {
   object-fit: cover;
+  object-position: center center;
   animation: kenburns-subtle 40s infinite alternate linear;
 }
 
@@ -177,6 +237,7 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   width: 100%;
+  padding-right: 3.5rem; /* Scoot weather card left to make room for top-right settings bubble */
 }
 
 .clock-section {
@@ -613,33 +674,35 @@ body {
   transform: scale(0.95);
 }
 
-/* Floating settings button */
+/* Floating settings button - Top Right Position */
 .floating-settings-btn {
   position: fixed;
-  bottom: 1.75rem;
-  right: 1.75rem;
+  top: 1.25rem;
+  right: 1.25rem;
+  bottom: auto;
   left: auto;
   z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 2.85rem;
+  height: 2.85rem;
   border-radius: 50%;
-  background: rgba(10, 14, 23, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  color: var(--color-text-secondary);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--color-text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .floating-settings-btn:hover {
   color: white;
-  background: rgba(20, 26, 42, 0.7);
-  transform: rotate(30deg) scale(1.05);
+  background: rgba(30, 41, 59, 0.85);
+  transform: rotate(45deg) scale(1.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 .floating-settings-btn:active {
