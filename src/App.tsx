@@ -41,7 +41,7 @@ const DEFAULT_CONFIG: DashboardConfig = {
   showTodos: true,
   photoRefreshMinutes: 5,
   weatherForecastDays: 3,
-  googlePhotosSharedLink: '',
+  googlePhotosSharedLink: 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6',
   glassOpacity: 45,
   bgOverlayOpacity: 50,
   photoFitMode: 'ambient',
@@ -130,8 +130,11 @@ export default function App() {
       const parsed = JSON.parse(saved);
       if (!parsed.googleClientId || parsed.googleClientId !== DEFAULT_CONFIG.googleClientId) {
         parsed.googleClientId = DEFAULT_CONFIG.googleClientId;
-        localStorage.setItem('calboard_config', JSON.stringify(parsed));
       }
+      if (!parsed.googlePhotosSharedLink) {
+        parsed.googlePhotosSharedLink = DEFAULT_CONFIG.googlePhotosSharedLink;
+      }
+      localStorage.setItem('calboard_config', JSON.stringify(parsed));
       return parsed;
     }
     return DEFAULT_CONFIG;
@@ -227,7 +230,13 @@ export default function App() {
       try {
         const urls = await fetchSharedAlbumPhotos(config.googlePhotosSharedLink);
         if (urls.length > 0) {
-          setBackgrounds(urls);
+          // Shuffle photo list using Fisher-Yates algorithm for random order
+          const shuffled = [...urls];
+          for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+          }
+          setBackgrounds(shuffled);
           setBgIndex(0);
         } else {
           setBackgrounds(DEFAULT_BACKGROUNDS);
@@ -291,11 +300,18 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Background Image Rotator
+  // Background Image Rotator (Random Selection)
   useEffect(() => {
     const duration = config.photoRefreshMinutes * 60 * 1000;
     const bgRotator = setInterval(() => {
-      setBgIndex((prevIndex) => (prevIndex + 1) % backgrounds.length);
+      setBgIndex((prevIndex) => {
+        if (backgrounds.length <= 1) return 0;
+        let nextIndex = Math.floor(Math.random() * backgrounds.length);
+        while (nextIndex === prevIndex) {
+          nextIndex = Math.floor(Math.random() * backgrounds.length);
+        }
+        return nextIndex;
+      });
     }, duration);
     return () => clearInterval(bgRotator);
   }, [backgrounds, config.photoRefreshMinutes]);
