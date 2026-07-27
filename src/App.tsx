@@ -177,7 +177,7 @@ export default function App() {
   const [backgrounds, setBackgrounds] = useState<string[]>(DEFAULT_BACKGROUNDS);
   const [bgIndex, setBgIndex] = useState(0);
 
-  // Force cache invalidation for PWA webviews on new builds
+  // Clean up PWA cache on new builds without polluting URL
   useEffect(() => {
     const CURRENT_VERSION = 'v2.1.0-lowres-pwa';
     const lastVersion = localStorage.getItem('calboard_pwa_version');
@@ -188,9 +188,11 @@ export default function App() {
           names.forEach((name) => caches.delete(name));
         });
       }
-      if (!window.location.search.includes('v=')) {
-        window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+      if (window.location.search.includes('v=')) {
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
+    } else if (window.location.search.includes('v=')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
 
