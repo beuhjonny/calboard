@@ -35,8 +35,8 @@ export async function fetchLiveWeatherKeyless(location: string): Promise<Weather
 
   const { latitude, longitude } = geoData.results[0];
 
-  // 2. Fetch current weather and forecast
-  const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,rain_sum,showers_sum,snowfall_sum&temperature_unit=${tempUnit}&wind_speed_unit=${windUnit}&timezone=auto`;
+  // 2. Fetch current weather, 24h hourly, and 7-day daily forecast
+  const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum&temperature_unit=${tempUnit}&wind_speed_unit=${windUnit}&timezone=auto`;
   
   const weatherRes = await fetch(forecastUrl);
   if (!weatherRes.ok) {
@@ -46,15 +46,16 @@ export async function fetchLiveWeatherKeyless(location: string): Promise<Weather
 
   const current = weatherData.current;
   const daily = weatherData.daily;
+  const hourly = weatherData.hourly;
 
   // Map current weather
   const currentCondition = mapWmoCodeToIconAndCondition(current.weather_code);
 
-  // Map forecast (Open-Meteo returns next 7 days. We want the next 3 days: index 1, 2, 3)
+  // Map 3-day forecast for header card
   const mappedForecast = [];
   for (let i = 1; i <= 3; i++) {
     const dateStr = daily.time[i];
-    const date = new Date(dateStr + 'T00:00:00'); // prevent timezone shift
+    const date = new Date(dateStr + 'T00:00:00');
     const weekday = date.toLocaleDateString([], { weekday: 'short' });
     const fcCondition = mapWmoCodeToIconAndCondition(daily.weather_code[i]);
 
@@ -68,6 +69,50 @@ export async function fetchLiveWeatherKeyless(location: string): Promise<Weather
     });
   }
 
+  // Map next 14 hourly items starting from current hour
+  const mappedHourly = [];
+  if (hourly && hourly.time) {
+    const nowHour = new Date().getHours();
+    const currentISO = new Date().toISOString().slice(0, 13);
+    let startIndex = hourly.time.findIndex((t: string) => t.startsWith(currentISO));
+    if (startIndex === -1) startIndex = nowHour;
+
+    for (let i = startIndex; i < Math.min(startIndex + 14, hourly.time.length); i++) {
+      const timeStr = hourly.time[i];
+      const hourDate = new Date(timeStr);
+      const formattedHour = hourDate.toLocaleTimeString([], { hour: 'numeric' });
+      const hrCondition = mapWmoCodeToIconAndCondition(hourly.weather_code[i]);
+
+      mappedHourly.push({
+        time: i === startIndex ? 'Now' : formattedHour,
+        temp: Math.round(hourly.temperature_2m[i]),
+        icon: hrCondition.icon,
+        condition: hrCondition.condition,
+        precipProb: Math.round(hourly.precipitation_probability?.[i] ?? 0),
+      });
+    }
+  }
+
+  // Map 7-day extended forecast for expanded modal
+  const mappedExtended = [];
+  for (let i = 0; i < Math.min(7, daily.time.length); i++) {
+    const dateStr = daily.time[i];
+    const date = new Date(dateStr + 'T00:00:00');
+    const weekday = i === 0 ? 'Today' : date.toLocaleDateString([], { weekday: 'short' });
+    const fullDate = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const fcCondition = mapWmoCodeToIconAndCondition(daily.weather_code[i]);
+
+    mappedExtended.push({
+      date: weekday,
+      fullDate,
+      tempMin: Math.round(daily.temperature_2m_min[i]),
+      tempMax: Math.round(daily.temperature_2m_max[i]),
+      condition: fcCondition.condition,
+      icon: fcCondition.icon,
+      precipSum: Math.round((daily.precipitation_sum?.[i] ?? 0) * 10) / 10,
+    });
+  }
+
   return {
     temp: Math.round(current.temperature_2m),
     condition: currentCondition.condition,
@@ -75,6 +120,12 @@ export async function fetchLiveWeatherKeyless(location: string): Promise<Weather
     tempMin: Math.round(daily.temperature_2m_min[0]),
     tempMax: Math.round(daily.temperature_2m_max[0]),
     description: currentCondition.condition,
+    apparentTemp: Math.round(current.apparent_temperature ?? current.temperature_2m),
+    humidity: Math.round(current.relative_humidity_2m ?? 0),
+    windSpeed: Math.round(current.wind_speed_10m ?? 0),
+    windUnit: windUnit === 'mph' ? 'mph' : 'm/s',
     forecast: mappedForecast,
+    hourly: mappedHourly,
+    extendedForecast: mappedExtended,
   };
 }

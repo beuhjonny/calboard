@@ -43,6 +43,10 @@ export interface WeatherData {
   tempMin: number;
   tempMax: number;
   description: string;
+  apparentTemp?: number;
+  humidity?: number;
+  windSpeed?: number;
+  windUnit?: string;
   forecast: Array<{
     date: string;
     temp: number;
@@ -50,5 +54,21 @@ export interface WeatherData {
     tempMax: number;
     condition: string;
     icon: string;
+  }>;
+  hourly?: Array<{
+    time: string;
+    temp: number;
+    icon: string;
+    condition: string;
+    precipProb: number;
+  }>;
+  extendedForecast?: Array<{
+    date: string;
+    fullDate: string;
+    tempMin: number;
+    tempMax: number;
+    condition: string;
+    icon: string;
+    precipSum: number;
   }>;
 }

@@ -189,10 +189,25 @@ export default function App() {
   const [weather, setWeather] = useState<WeatherData>(MOCK_WEATHER);
   const [newTaskTitle, setNewTaskTitle] = useState('');
 
+  // Modals & Drawers state
+  const [isWeatherModalOpen, setIsWeatherModalOpen] = useState<boolean>(false);
+
   // Save config changes
   useEffect(() => {
     localStorage.setItem('calboard_config', JSON.stringify(config));
   }, [config]);
+
+  // ESC key to dismiss weather modal or settings drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsWeatherModalOpen(false);
+        setIsSettingsOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Save token changes
   useEffect(() => {
@@ -686,7 +701,15 @@ export default function App() {
             </p>
           </div>
 
-          <div className="weather-card glass-panel">
+          <div 
+            className="weather-card glass-panel interactive-weather"
+            onClick={() => setIsWeatherModalOpen(true)}
+            title="Tap to expand hourly and 7-day forecast"
+          >
+            <div className="weather-tap-hint">
+              <span>Hourly & 7-Day</span>
+              <Maximize size={10} />
+            </div>
             <div className="weather-main">
               <div className="weather-icon-wrapper">
                 {renderWeatherIcon(weather.icon, 38)}
@@ -1305,6 +1328,137 @@ export default function App() {
           </button>
         </div>
       </div>
+      {/* EXPANDED WEATHER MODAL */}
+      {isWeatherModalOpen && (
+        <div 
+          className="weather-modal-overlay"
+          onClick={() => setIsWeatherModalOpen(false)}
+        >
+          <div 
+            className="weather-modal-content glass-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="weather-modal-header">
+              <div>
+                <h2 className="weather-modal-title">{config.weatherLocation}</h2>
+                <p className="weather-modal-subtitle">
+                  {time.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWeatherModalOpen(false)}
+                className="weather-modal-close-btn"
+                title="Close (Esc)"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Current Weather Highlights Grid */}
+            <div className="weather-modal-hero">
+              <div className="weather-modal-temp-wrapper">
+                <div className="weather-modal-icon-large">
+                  {renderWeatherIcon(weather.icon, 64)}
+                </div>
+                <div>
+                  <div className="weather-modal-temp">{weather.temp}°</div>
+                  <div className="weather-modal-condition">{weather.condition}</div>
+                </div>
+              </div>
+
+              <div className="weather-modal-stats">
+                <div className="weather-stat-item">
+                  <span className="weather-stat-label">Feels Like</span>
+                  <span className="weather-stat-value">{weather.apparentTemp ?? weather.temp}°</span>
+                </div>
+                <div className="weather-stat-item">
+                  <span className="weather-stat-label">High / Low</span>
+                  <span className="weather-stat-value">H: {weather.tempMax}° / L: {weather.tempMin}°</span>
+                </div>
+                <div className="weather-stat-item">
+                  <span className="weather-stat-label">Humidity</span>
+                  <span className="weather-stat-value">💧 {weather.humidity ?? 0}%</span>
+                </div>
+                <div className="weather-stat-item">
+                  <span className="weather-stat-label">Wind Speed</span>
+                  <span className="weather-stat-value">💨 {weather.windSpeed ?? 0} {weather.windUnit || 'mph'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 24-Hour Forecast Scrollable Strip */}
+            {weather.hourly && weather.hourly.length > 0 && (
+              <div className="weather-modal-section">
+                <h3 className="weather-modal-section-title">Hourly Forecast</h3>
+                <div className="weather-hourly-strip hide-scrollbar">
+                  {weather.hourly.map((hr, idx) => (
+                    <div key={`${hr.time}-${idx}`} className="weather-hourly-card">
+                      <span className="weather-hourly-time">{hr.time}</span>
+                      <div className="weather-hourly-icon">
+                        {renderWeatherIcon(hr.icon, 28)}
+                      </div>
+                      <span className="weather-hourly-temp">{hr.temp}°</span>
+                      {hr.precipProb > 0 && (
+                        <span className="weather-hourly-precip">💧 {hr.precipProb}%</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 7-Day Extended Forecast Table */}
+            {weather.extendedForecast && weather.extendedForecast.length > 0 && (
+              <div className="weather-modal-section">
+                <h3 className="weather-modal-section-title">7-Day Extended Forecast</h3>
+                <div className="weather-extended-list">
+                  {weather.extendedForecast.map((day) => (
+                    <div key={day.date} className="weather-extended-row">
+                      <div className="weather-extended-day">
+                        <span className="weather-day-name">{day.date}</span>
+                        <span className="weather-day-date">{day.fullDate}</span>
+                      </div>
+                      <div className="weather-extended-condition">
+                        {renderWeatherIcon(day.icon, 24)}
+                        <span>{day.condition}</span>
+                      </div>
+                      {day.precipSum > 0 && (
+                        <span className="weather-extended-rain">💧 {day.precipSum}mm</span>
+                      )}
+                      <div className="weather-extended-temps">
+                        <span className="weather-temp-min">{day.tempMin}°</span>
+                        <div className="weather-temp-bar">
+                          <div 
+                            className="weather-temp-bar-fill"
+                            style={{ 
+                              width: `${Math.min(100, Math.max(10, ((day.tempMax - day.tempMin) / 30) * 100))}%` 
+                            }} 
+                          />
+                        </div>
+                        <span className="weather-temp-max">{day.tempMax}°</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Modal Bottom Dismiss Action */}
+            <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setIsWeatherModalOpen(false)}
+                className="settings-btn settings-btn-primary"
+                style={{ width: 'auto', padding: '0.6rem 1.5rem', fontSize: '0.85rem' }}
+              >
+                Close Weather Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
