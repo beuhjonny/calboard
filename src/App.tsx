@@ -17,7 +17,8 @@ import {
   X, 
   FolderHeart,
   Info,
-  Maximize
+  Maximize,
+  RefreshCw
 } from 'lucide-react';
 import type { DashboardConfig, GoogleCalendarEvent, GoogleTask, WeatherData } from './types';
 import { 
@@ -574,7 +575,12 @@ export default function App() {
           <div className="clock-section">
             <span className="clock-greeting">{getGreeting()}</span>
             <h1 className="clock-time">
-              {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+              <span className="time-digits">
+                {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).split(' ')[0]}
+              </span>
+              <span className="time-ampm">
+                {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }).split(' ')[1] || ''}
+              </span>
             </h1>
             <p className="clock-date">
               {time.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -1063,6 +1069,28 @@ export default function App() {
                   />
                   <p className="settings-subtext" style={{ marginTop: '0.35rem' }}>
                     Required to authorize your local browser to sync with Google Calendar and Tasks.
+                  </p>
+                </div>
+
+                <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+                  <label className="settings-label">Live App Cache</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if ('caches' in window) {
+                        caches.keys().then((names) => {
+                          names.forEach((name) => caches.delete(name));
+                        });
+                      }
+                      window.location.href = window.location.origin + window.location.pathname + '?reload=' + Date.now();
+                    }}
+                    className="settings-btn settings-btn-secondary"
+                    style={{ width: '100%', marginTop: '0.35rem', padding: '0.55rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--color-accent-amber)' }}
+                  >
+                    <RefreshCw size={15} /> Force Hard Refresh Live App
+                  </button>
+                  <p className="settings-subtext" style={{ marginTop: '0.35rem' }}>
+                    Clears web app cache and reloads the latest live code update from Firebase.
                   </p>
                 </div>
               </div>
