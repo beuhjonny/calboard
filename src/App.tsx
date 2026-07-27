@@ -518,7 +518,12 @@ export default function App() {
 
   const handleLeftPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    const container = e.currentTarget.parentElement?.parentElement;
+    const handle = e.currentTarget;
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    
+    const container = handle.parentElement?.parentElement;
     if (!container) return;
     
     const containerWidth = container.getBoundingClientRect().width;
@@ -527,11 +532,15 @@ export default function App() {
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const relativeX = moveEvent.clientX - containerLeft;
       const percent = (relativeX / containerWidth) * 100;
-      const newWidth = Math.max(20, Math.min(55, percent));
+      const newWidth = Math.max(20, Math.min(65, percent));
       setLeftWidth(newWidth);
+      localStorage.setItem('calboard_left_width', newWidth.toString());
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      try {
+        handle.releasePointerCapture(upEvent.pointerId);
+      } catch (_) {}
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
@@ -542,7 +551,12 @@ export default function App() {
 
   const handleRightPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
-    const container = e.currentTarget.parentElement?.parentElement;
+    const handle = e.currentTarget;
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    const container = handle.parentElement?.parentElement;
     if (!container) return;
     
     const containerWidth = container.getBoundingClientRect().width;
@@ -552,11 +566,15 @@ export default function App() {
       const relativeX = moveEvent.clientX - containerLeft;
       const rightPx = containerWidth - relativeX;
       const percent = (rightPx / containerWidth) * 100;
-      const newWidth = Math.max(20, Math.min(55, percent));
+      const newWidth = Math.max(20, Math.min(65, percent));
       setRightWidth(newWidth);
+      localStorage.setItem('calboard_right_width', newWidth.toString());
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      try {
+        handle.releasePointerCapture(upEvent.pointerId);
+      } catch (_) {}
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
