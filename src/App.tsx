@@ -108,7 +108,7 @@ const MOCK_TASKS: GoogleTask[] = [
   { id: 't5', title: 'Clean coffee grinder', status: 'needsAction' }
 ];
 
-// Mock Weather
+// Mock Weather with complete Hourly & 7-Day Extended Forecast
 const MOCK_WEATHER: WeatherData = {
   temp: 22,
   condition: 'Partly Cloudy',
@@ -116,10 +116,37 @@ const MOCK_WEATHER: WeatherData = {
   tempMin: 17,
   tempMax: 26,
   description: 'scattered clouds with a light breeze',
+  apparentTemp: 23,
+  humidity: 62,
+  windSpeed: 8,
+  windUnit: 'mph',
   forecast: [
     { date: 'Mon', temp: 24, tempMin: 18, tempMax: 27, condition: 'Sunny', icon: '01d' },
     { date: 'Tue', temp: 20, tempMin: 15, tempMax: 23, condition: 'Rainy', icon: '10d' },
     { date: 'Wed', temp: 21, tempMin: 16, tempMax: 24, condition: 'Partly Cloudy', icon: '02d' }
+  ],
+  hourly: [
+    { time: 'Now', temp: 22, icon: '03d', condition: 'Partly Cloudy', precipProb: 0 },
+    { time: '11 AM', temp: 23, icon: '01d', condition: 'Sunny', precipProb: 0 },
+    { time: '12 PM', temp: 24, icon: '01d', condition: 'Sunny', precipProb: 5 },
+    { time: '1 PM', temp: 25, icon: '02d', condition: 'Partly Cloudy', precipProb: 10 },
+    { time: '2 PM', temp: 26, icon: '02d', condition: 'Partly Cloudy', precipProb: 15 },
+    { time: '3 PM', temp: 25, icon: '10d', condition: 'Light Rain', precipProb: 40 },
+    { time: '4 PM', temp: 24, icon: '10d', condition: 'Rain', precipProb: 65 },
+    { time: '5 PM', temp: 23, icon: '03d', condition: 'Cloudy', precipProb: 20 },
+    { time: '6 PM', temp: 22, icon: '02d', condition: 'Partly Cloudy', precipProb: 10 },
+    { time: '7 PM', temp: 21, icon: '01d', condition: 'Clear', precipProb: 0 },
+    { time: '8 PM', temp: 19, icon: '01d', condition: 'Clear', precipProb: 0 },
+    { time: '9 PM', temp: 18, icon: '01d', condition: 'Clear', precipProb: 0 },
+  ],
+  extendedForecast: [
+    { date: 'Today', fullDate: 'Jul 27', tempMin: 17, tempMax: 26, condition: 'Partly Cloudy', icon: '03d', precipSum: 0 },
+    { date: 'Tue', fullDate: 'Jul 28', tempMin: 15, tempMax: 23, condition: 'Rain Showers', icon: '10d', precipSum: 4.2 },
+    { date: 'Wed', fullDate: 'Jul 29', tempMin: 16, tempMax: 24, condition: 'Partly Cloudy', icon: '02d', precipSum: 0 },
+    { date: 'Thu', fullDate: 'Jul 30', tempMin: 18, tempMax: 27, condition: 'Sunny', icon: '01d', precipSum: 0 },
+    { date: 'Fri', fullDate: 'Jul 31', tempMin: 19, tempMax: 28, condition: 'Sunny', icon: '01d', precipSum: 0 },
+    { date: 'Sat', fullDate: 'Aug 1', tempMin: 17, tempMax: 25, condition: 'Thunderstorm', icon: '11d', precipSum: 12.5 },
+    { date: 'Sun', fullDate: 'Aug 2', tempMin: 16, tempMax: 24, condition: 'Clear', icon: '01d', precipSum: 0 },
   ]
 };
 
