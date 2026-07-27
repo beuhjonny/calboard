@@ -136,6 +136,23 @@ export default function App() {
   const [backgrounds, setBackgrounds] = useState<string[]>(DEFAULT_BACKGROUNDS);
   const [bgIndex, setBgIndex] = useState(0);
 
+  // Force cache invalidation for PWA webviews on new builds
+  useEffect(() => {
+    const CURRENT_VERSION = 'v2.1.0-lowres-pwa';
+    const lastVersion = localStorage.getItem('calboard_pwa_version');
+    if (lastVersion !== CURRENT_VERSION) {
+      localStorage.setItem('calboard_pwa_version', CURRENT_VERSION);
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+      if (!window.location.search.includes('v=')) {
+        window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+      }
+    }
+  }, []);
+
   // Cached Google OAuth Token
   const [token, setToken] = useState<TokenResponse | null>(() => {
     const saved = localStorage.getItem('google_access_token');
