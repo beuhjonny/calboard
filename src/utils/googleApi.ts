@@ -191,27 +191,32 @@ export async function fetchSharedAlbumPhotos(albumUrl: string): Promise<string[]
 
   const proxies = [
     (url: string) => `/api/google-photos-proxy?url=${encodeURIComponent(url)}`,
+    (url: string) => `https://cors.eu.org/${url}`,
+    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
   ];
 
   for (let i = 0; i < proxies.length; i++) {
     const proxyUrl = proxies[i](albumUrl);
     try {
-      const response = await fetch(proxyUrl);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const response = await fetch(proxyUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (!response.ok) continue;
 
       let html = '';
-      if (proxyUrl.includes('allorigins')) {
+      if (proxyUrl.includes('allorigins.win/get')) {
         const data = await response.json();
         html = data.contents || '';
       } else {
         html = await response.text();
       }
 
-      // Extract direct shared photo URLs starting with pw/ or lr/ subdirectories
-      const regex = /https:\/\/lh[3-6]\.googleusercontent\.com\/(?:pw|lr)\/[a-zA-Z0-9\-_]{50,}/g;
+      // Extract direct shared photo URLs starting with pw/ or lr/ or googleusercontent
+      const regex = /https:\/\/lh[3-6]\.googleusercontent\.com\/(?:pw|lr|[a-zA-Z0-9\-_]+)\/[a-zA-Z0-9\-_]{50,}/g;
       const matches = html.match(regex) || [];
 
       if (matches.length > 0) {
@@ -221,7 +226,7 @@ export async function fetchSharedAlbumPhotos(albumUrl: string): Promise<string[]
         return uniqueUrls.map((url: string) => `${url}=w1920-no`);
       }
     } catch (err) {
-      console.warn(`[PhotosScraper] Proxy option ${i + 1} failed:`, err);
+      console.warn(`[PhotosScraper] Proxy ${i + 1} skipped:`, err);
     }
   }
 

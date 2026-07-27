@@ -332,56 +332,34 @@ body {
   width: 100% !important;
 }
 
-/* Resizable Panel Handles styling */
-.panel-resize-handle {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 52px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
+/* Resizable Central Divider Handle between Panels */
+.panel-divider-handle {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  cursor: col-resize;
+  width: 18px;
+  margin: 0 -9px;
   z-index: 50;
-  opacity: 0.5;
+  cursor: col-resize;
   touch-action: none;
-  transition: opacity 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  opacity: 0.45;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
 }
 
-.panel:hover .panel-resize-handle,
-.panel-resize-handle:hover,
-.panel-resize-handle:active {
+.panels-container:hover .panel-divider-handle,
+.panel-divider-handle:hover,
+.panel-divider-handle:active {
   opacity: 1;
-}
-
-.panel-resize-handle:hover,
-.panel-resize-handle:active {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
-  height: 64px;
-  width: 16px;
-}
-
-.panel-resize-handle.right {
-  right: -7px;
-}
-
-.panel-resize-handle.left {
-  left: -7px;
 }
 
 .panel-grip-line {
   width: 4px;
-  height: 2px;
-  border-radius: 1px;
-  background: rgba(255, 255, 255, 0.4);
+  height: 18px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.5);
 }
 
 /* Base Panel Styling */
@@ -439,25 +417,30 @@ body {
 .agenda-group {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  margin-bottom: 0.5rem;
+  gap: 0.2rem;
+  margin-bottom: 0.35rem;
+}
+
+.agenda-group:first-child {
+  margin-top: 0;
 }
 
 .agenda-group:last-child {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 .agenda-group-header {
   font-family: var(--font-display);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 800;
   text-transform: uppercase;
   color: var(--color-accent-blue);
   letter-spacing: 0.06em;
-  padding-bottom: 0.15rem;
+  padding-top: 0;
+  padding-bottom: 0.08rem;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
-  margin-top: 0.25rem;
-  margin-bottom: 0.1rem;
+  margin-top: 0.05rem;
+  margin-bottom: 0.05rem;
 }
 
 .agenda-group-list {
