@@ -257,6 +257,20 @@ export default function App() {
     }
   };
 
+  const handleRemoveSharedLibrary = async () => {
+    setConfig({ ...config, googlePhotosSharedLink: '' });
+    setIsSyncingPhotos(true);
+    try {
+      await saveDisplayPhotosBatch([]);
+      setBackgrounds(DEFAULT_BACKGROUNDS);
+      setFirestorePhotosCount(0);
+    } catch (err) {
+      console.error('Error clearing shared library:', err);
+    } finally {
+      setIsSyncingPhotos(false);
+    }
+  };
+
   // Scheduled Background Auto-Sync Timer (12h or 24h)
   useEffect(() => {
     const intervalHours = config.autoSyncIntervalHours ?? 12;
@@ -1133,22 +1147,41 @@ export default function App() {
             {/* Active Synced Libraries Card */}
             <div className="settings-group" style={{ marginTop: '0.85rem' }}>
               <label className="settings-label">Active Synced Libraries</label>
-              <div className="synced-library-card">
-                <div className="synced-library-header">
-                  <div className="synced-library-title">
-                    <FolderHeart size={16} style={{ color: 'var(--color-accent-emerald)' }} />
-                    <span>Kids Shared Album</span>
+              {config.googlePhotosSharedLink || firestorePhotosCount > 0 ? (
+                <div className="synced-library-card">
+                  <div className="synced-library-header">
+                    <div className="synced-library-title">
+                      <FolderHeart size={16} style={{ color: 'var(--color-accent-emerald)' }} />
+                      <span>Kids Shared Album</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveSharedLibrary}
+                      className="settings-btn settings-btn-danger"
+                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.72rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      title="Remove library link and wipe Firestore wallpapers"
+                    >
+                      <Trash2 size={12} /> Remove Library
+                    </button>
                   </div>
-                  <span className="synced-library-badge">Synced</span>
+                  <div className="synced-library-meta">
+                    <p><strong>Database Target:</strong> Firestore collection <code>Current_Display_Photos</code></p>
+                    <p><strong>Active Pool:</strong> {firestorePhotosCount > 0 ? `${firestorePhotosCount} randomized 1080p wallpapers (video play overlays suppressed)` : 'Initializing sync...'}</p>
+                    <p className="synced-library-note">
+                      💡 <em>Syncing a new 24-photo batch overwrites the 24 active display slots in Firestore with 24 freshly randomized photos sliced from your 302-photo album.</em>
+                    </p>
+                  </div>
                 </div>
-                <div className="synced-library-meta">
-                  <p><strong>Database Target:</strong> Firestore collection <code>Current_Display_Photos</code></p>
-                  <p><strong>Active Pool:</strong> {firestorePhotosCount > 0 ? `${firestorePhotosCount} randomized 1080p wallpapers` : 'Initializing sync...'}</p>
-                  <p className="synced-library-note">
-                    💡 <em>Syncing a new 24-photo batch overwrites the 24 active display slots in Firestore with 24 freshly randomized photos sliced from your 302-photo album.</em>
+              ) : (
+                <div className="synced-library-card" style={{ opacity: 0.75 }}>
+                  <div className="synced-library-header">
+                    <span className="synced-library-title" style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>No Custom Library Linked</span>
+                  </div>
+                  <p className="synced-library-note" style={{ marginTop: '0.2rem' }}>
+                    Displaying default curated wallpapers. Paste a Google Photos album share link below to sync your photos!
                   </p>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Public shared album link & Firestore Sync status */}
