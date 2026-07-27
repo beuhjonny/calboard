@@ -197,11 +197,12 @@ body {
 
 .clock-time {
   font-family: var(--font-display);
-  font-size: 9.5rem;
+  font-size: clamp(3.2rem, 7.5vw, 7.5rem);
   font-weight: 800;
-  line-height: 0.9;
+  line-height: 1;
   letter-spacing: -0.03em;
   color: white;
+  white-space: nowrap;
 }
 
 .clock-date {
@@ -1013,5 +1014,52 @@ body {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Responsive Layout Adjustments for Tablets (Fire HD, iPad, etc.) */
+@media (max-width: 900px) {
+  .dashboard-container {
+    padding: 1.25rem 1.5rem;
+    gap: 1rem;
+  }
+
+  .clock-time {
+    font-size: clamp(2.8rem, 10vw, 5.2rem);
+  }
+
+  .top-row {
+    align-items: center;
+  }
+
+  .weather-card {
+    padding: 1rem 1.25rem;
+    min-width: 220px;
+  }
+}
+
+/* Portrait Orientation Scaling */
+@media (orientation: portrait) {
+  .dashboard-container {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .top-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .clock-time {
+    font-size: clamp(2.8rem, 9.5vw, 5rem);
+  }
+
+  .panels-container {
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .panel {
+    width: 100% !important;
   }
 }

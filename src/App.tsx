@@ -16,7 +16,8 @@ import {
   Check, 
   X, 
   FolderHeart,
-  Info
+  Info,
+  Maximize
 } from 'lucide-react';
 import type { DashboardConfig, GoogleCalendarEvent, GoogleTask, WeatherData } from './types';
 import { 
@@ -466,6 +467,16 @@ export default function App() {
     }
     
     return date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
   };
 
   // Resizing split width states for independent panels
@@ -966,6 +977,19 @@ export default function App() {
                   🖼 Crop & Fill Screen
                 </button>
               </div>
+            </div>
+
+            {/* Immersive Fullscreen Toggle */}
+            <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+              <label className="settings-label">Screen Display</label>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="settings-btn settings-btn-primary"
+                style={{ width: '100%', padding: '0.6rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+              >
+                <Maximize size={16} /> Enter Immersive Full Screen
+              </button>
             </div>
           </div>
 
