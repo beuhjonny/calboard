@@ -393,34 +393,50 @@ body {
   width: 100% !important;
 }
 
-/* Resizable Central Divider Handle between Panels */
-.panel-divider-handle {
+/* Resizable Independent Panel Handles styling */
+.panel-resize-handle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 54px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 18px;
-  margin: 0 -9px;
-  z-index: 50;
   cursor: col-resize;
+  z-index: 50;
+  opacity: 0.55;
   touch-action: none;
-  opacity: 0.45;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  flex-shrink: 0;
+  transition: opacity 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
-.panels-container:hover .panel-divider-handle,
-.panel-divider-handle:hover,
-.panel-divider-handle:active {
+.panel:hover .panel-resize-handle,
+.panel-resize-handle:hover,
+.panel-resize-handle:active {
   opacity: 1;
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
+}
+
+.panel-resize-handle.right {
+  right: -7px;
+}
+
+.panel-resize-handle.left {
+  left: -7px;
 }
 
 .panel-grip-line {
   width: 4px;
-  height: 18px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.5);
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.6);
 }
 
 /* Base Panel Styling */

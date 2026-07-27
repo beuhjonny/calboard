@@ -536,20 +536,25 @@ export default function App() {
     }
   };
 
-  // Resizing split width state for middle divider between panels
+  // Resizing split width states for independent panels
   const [leftWidth, setLeftWidth] = useState<number>(() => {
     const saved = localStorage.getItem('calboard_left_width');
-    return saved ? parseFloat(saved) : 50;
+    return saved ? parseFloat(saved) : 42;
   });
 
-  const handleDividerPointerDown = (e: React.PointerEvent) => {
+  const [rightWidth, setRightWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('calboard_right_width');
+    return saved ? parseFloat(saved) : 42;
+  });
+
+  const handleLeftPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     const handle = e.currentTarget;
     try {
       handle.setPointerCapture(e.pointerId);
     } catch (_) {}
     
-    const container = handle.parentElement;
+    const container = handle.parentElement?.parentElement;
     if (!container) return;
     
     const containerWidth = container.getBoundingClientRect().width;
@@ -558,9 +563,42 @@ export default function App() {
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const relativeX = moveEvent.clientX - containerLeft;
       const percent = (relativeX / containerWidth) * 100;
-      const newWidth = Math.max(25, Math.min(75, percent));
+      const newWidth = Math.max(20, Math.min(65, percent));
       setLeftWidth(newWidth);
       localStorage.setItem('calboard_left_width', newWidth.toString());
+    };
+
+    const handlePointerUp = (upEvent: PointerEvent) => {
+      try {
+        handle.releasePointerCapture(upEvent.pointerId);
+      } catch (_) {}
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
+
+  const handleRightPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    const container = handle.parentElement?.parentElement;
+    if (!container) return;
+    
+    const containerWidth = container.getBoundingClientRect().width;
+    const containerRight = container.getBoundingClientRect().right;
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const distanceFromRight = containerRight - moveEvent.clientX;
+      const percent = (distanceFromRight / containerWidth) * 100;
+      const newWidth = Math.max(20, Math.min(65, percent));
+      setRightWidth(newWidth);
+      localStorage.setItem('calboard_right_width', newWidth.toString());
     };
 
     const handlePointerUp = (upEvent: PointerEvent) => {
@@ -578,6 +616,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('calboard_left_width', leftWidth.toString());
   }, [leftWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('calboard_right_width', rightWidth.toString());
+  }, [rightWidth]);
 
   return (
     <div 
@@ -653,8 +695,19 @@ export default function App() {
           {/* Calendar Agenda Panel */}
           <section 
             className="panel glass-panel relative"
-            style={config.showTodos ? { flex: `0 0 ${leftWidth}%`, width: `${leftWidth}%` } : undefined}
+            style={config.showTodos ? { width: `${leftWidth}%`, flexShrink: 0, flexGrow: 0 } : undefined}
           >
+            {config.showTodos && (
+              <div 
+                className="panel-resize-handle right"
+                onPointerDown={handleLeftPointerDown}
+                title="Drag left/right to resize calendar panel"
+              >
+                <div className="panel-grip-line" />
+                <div className="panel-grip-line" />
+                <div className="panel-grip-line" />
+              </div>
+            )}
             <div className="panel-header">
               <div className="panel-title-wrapper">
                 <CalendarIcon size={18} style={{ color: 'var(--color-accent-blue)' }} />
@@ -737,25 +790,21 @@ export default function App() {
             </div>
           </section>
 
-          {/* Central Resizable Divider Handle between Calendar and Todo */}
-          {config.showTodos && (
-            <div 
-              className="panel-divider-handle"
-              onPointerDown={handleDividerPointerDown}
-              title="Drag left or right to resize panels"
-            >
-              <div className="panel-grip-line" />
-              <div className="panel-grip-line" />
-              <div className="panel-grip-line" />
-            </div>
-          )}
-
           {/* Todo List Panel */}
           {config.showTodos && (
             <section 
               className="panel glass-panel relative"
-              style={{ flex: 1 }}
+              style={{ width: `${rightWidth}%`, flexShrink: 0, flexGrow: 0 }}
             >
+              <div 
+                className="panel-resize-handle left"
+                onPointerDown={handleRightPointerDown}
+                title="Drag left/right to resize todo panel"
+              >
+                <div className="panel-grip-line" />
+                <div className="panel-grip-line" />
+                <div className="panel-grip-line" />
+              </div>
               <div className="panel-header">
                 <div className="panel-title-wrapper">
                   <CheckSquare size={18} style={{ color: 'var(--color-accent-emerald)' }} />
