@@ -36,7 +36,7 @@ import { fetchLiveWeatherKeyless } from './utils/weatherApi';
 
 // Default mock configuration
 const DEFAULT_CONFIG: DashboardConfig = {
-  googleClientId: '',
+  googleClientId: '1003664264514-2mqlh24nv4nqngousmulumduo29r559d.apps.googleusercontent.com',
   weatherLocation: 'Montreal, CA',
   showTodos: true,
   photoRefreshMinutes: 5,
@@ -126,7 +126,14 @@ export default function App() {
   // Config & State
   const [config, setConfig] = useState<DashboardConfig>(() => {
     const saved = localStorage.getItem('calboard_config');
-    return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (!parsed.googleClientId) {
+        parsed.googleClientId = DEFAULT_CONFIG.googleClientId;
+      }
+      return parsed;
+    }
+    return DEFAULT_CONFIG;
   });
 
   const [time, setTime] = useState<Date>(new Date());
