@@ -22,8 +22,13 @@ export function loginWithGoogle(
       throw new Error('Google Identity Services SDK not loaded yet. Please wait a moment and try again.');
     }
 
+    const cleanClientId = (clientId || '').trim();
+    if (!cleanClientId) {
+      throw new Error('Google OAuth Client ID is missing. Please check Settings.');
+    }
+
     const client = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
+      client_id: cleanClientId,
       scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks',
       callback: (response: any) => {
         if (response.error) {

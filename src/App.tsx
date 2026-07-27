@@ -36,7 +36,7 @@ import { fetchLiveWeatherKeyless } from './utils/weatherApi';
 
 // Default mock configuration
 const DEFAULT_CONFIG: DashboardConfig = {
-  googleClientId: '1003664264514-2mqlh24nv4nqngousmulumduo29r559d.apps.googleusercontent.com',
+  googleClientId: '840133101705-7nvs9fkicf7f8h82qp33hnblkt036n32.apps.googleusercontent.com',
   weatherLocation: 'Montreal, CA',
   showTodos: true,
   photoRefreshMinutes: 5,
@@ -128,8 +128,9 @@ export default function App() {
     const saved = localStorage.getItem('calboard_config');
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (!parsed.googleClientId) {
+      if (!parsed.googleClientId || parsed.googleClientId !== DEFAULT_CONFIG.googleClientId) {
         parsed.googleClientId = DEFAULT_CONFIG.googleClientId;
+        localStorage.setItem('calboard_config', JSON.stringify(parsed));
       }
       return parsed;
     }
