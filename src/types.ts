@@ -8,6 +8,7 @@ export interface DashboardConfig {
   glassOpacity: number;
   bgOverlayOpacity: number;
   photoFitMode: 'bestfit' | 'ambient' | 'cover';
+  autoSyncIntervalHours: 0 | 12 | 24;
 }
 
 export interface GoogleCalendarEvent {

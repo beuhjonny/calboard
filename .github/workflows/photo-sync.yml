@@ -1,0 +1,27 @@
+name: Automated Google Photos Firestore Sync
+
+on:
+  schedule:
+    # Run every 12 hours automatically
+    - cron: '0 */12 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  sync-photos:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Background Google Photos Scraper & Firestore Sync
+        run: npx tsx scripts/sync-photos.ts

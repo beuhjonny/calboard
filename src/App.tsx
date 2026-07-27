@@ -47,6 +47,7 @@ const DEFAULT_CONFIG: DashboardConfig = {
   glassOpacity: 45,
   bgOverlayOpacity: 50,
   photoFitMode: 'bestfit',
+  autoSyncIntervalHours: 12,
 };
 
 // Curated stunning high-res photos for background if Google Photos isn't linked
@@ -255,6 +256,20 @@ export default function App() {
       setIsSyncingPhotos(false);
     }
   };
+
+  // Scheduled Background Auto-Sync Timer (12h or 24h)
+  useEffect(() => {
+    const intervalHours = config.autoSyncIntervalHours ?? 12;
+    if (intervalHours === 0) return;
+
+    const intervalMs = intervalHours * 60 * 60 * 1000;
+    const timer = setInterval(() => {
+      console.log(`[AutoSync] Triggering scheduled ${intervalHours}h photo batch sync to Firestore...`);
+      triggerAlbumSyncToFirestore();
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [config.autoSyncIntervalHours, config.googlePhotosSharedLink]);
 
   // Fetch Calendar and Tasks on a loop
   useEffect(() => {
@@ -1033,6 +1048,37 @@ export default function App() {
                 onChange={(e) => setConfig({ ...config, photoRefreshMinutes: Math.max(1, parseInt(e.target.value) || 1) })}
                 className="settings-input"
               />
+            </div>
+
+            {/* Scheduled Background Auto-Sync Selection */}
+            <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+              <label className="settings-label">Automated Scheduled Album Sync</label>
+              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setConfig({ ...config, autoSyncIntervalHours: 12 })}
+                  className={`settings-btn ${(config.autoSyncIntervalHours ?? 12) === 12 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                >
+                  ⏰ Every 12 Hours
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig({ ...config, autoSyncIntervalHours: 24 })}
+                  className={`settings-btn ${config.autoSyncIntervalHours === 24 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                >
+                  🌙 Every 24 Hours
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig({ ...config, autoSyncIntervalHours: 0 })}
+                  className={`settings-btn ${config.autoSyncIntervalHours === 0 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                >
+                  🚫 Manual Only
+                </button>
+              </div>
             </div>
 
             {/* Active Synced Libraries Card */}
