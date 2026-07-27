@@ -248,6 +248,39 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Screen Wake Lock API to prevent Fire Tablet display from sleeping
+  useEffect(() => {
+    let wakeLock: any = null;
+
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+          console.log('[WakeLock] Screen wake lock is active');
+        } catch (err) {
+          console.warn('[WakeLock] Screen wake lock failed:', err);
+        }
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+        wakeLock.release().catch(() => {});
+      }
+    };
+  }, []);
+
   // Save token changes
   useEffect(() => {
     if (token) {
@@ -730,7 +763,7 @@ export default function App() {
       </div>
 
       {/* Main Dashboard Layout */}
-      <div className="dashboard-container fade-in-up">
+      <div className={`dashboard-container fade-in-up ${!token ? 'logged-out-mode' : ''}`}>
         
         {/* Top Row: Clock and Weather Widget */}
         <div className="top-row">
@@ -760,7 +793,7 @@ export default function App() {
             </div>
             <div className="weather-main">
               <div className="weather-icon-wrapper">
-                {renderWeatherIcon(weather.icon, 38)}
+                {renderWeatherIcon(weather.icon, 52)}
               </div>
               <div className="weather-details">
                 <div className="weather-temp">{weather.temp}°C</div>
@@ -787,8 +820,24 @@ export default function App() {
           </div>
         </div>
 
-        {/* Bottom Row: Panels Resizable Flex Layout */}
-        <div className={`panels-container ${config.showTodos ? 'has-todos' : 'no-todos'}`}>
+        {/* LOGGED OUT UNAUTHENTICATED VIEW: Centered Clock/Weather + Bottom CTA */}
+        {!token ? (
+          <div className="logged-out-cta-container">
+            <button 
+              type="button"
+              onClick={handleConnectGoogle}
+              className="logged-out-cta-btn glass-panel"
+            >
+              <LogIn size={24} style={{ color: 'var(--color-accent-blue)' }} />
+              <div className="logged-out-cta-text">
+                <span className="logged-out-cta-title">Sign in with Google</span>
+                <span className="logged-out-cta-subtitle">Connect your Google Calendar, Tasks & Photos</span>
+              </div>
+            </button>
+          </div>
+        ) : (
+          /* LOGGED IN VIEW: Show Calendar & To Do Panels */
+          <div className={`panels-container ${config.showTodos ? 'has-todos' : 'no-todos'}`}>
           {/* Calendar Agenda Panel */}
           <section 
             className="panel glass-panel relative"
@@ -982,6 +1031,7 @@ export default function App() {
             </section>
           )}
         </div>
+        )}
       </div>
 
       {/* Floating Gear Button for settings */}

@@ -47,7 +47,7 @@ export function getActiveUserId(googleUserEmail?: string): string {
 
 /**
  * Subscribes to real-time updates for a specific User's Display_Photos collection in Firestore.
- * If the user's specific collection is empty, falls back to reading users/default_user/Display_Photos.
+ * Strictly scopes to /users/{userId}/Display_Photos.
  */
 export function subscribeUserDisplayPhotos(userId: string, callback: (photos: ScrapedPhoto[]) => void): () => void {
   if (!userId) {
@@ -59,38 +59,18 @@ export function subscribeUserDisplayPhotos(userId: string, callback: (photos: Sc
     const q = query(userPhotosRef, orderBy('updatedAt', 'desc'));
 
     return onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const photos: ScrapedPhoto[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data && data.url) {
-            photos.push({
-              id: docSnap.id,
-              url: data.url,
-              updatedAt: data.updatedAt || Date.now(),
-            });
-          }
-        });
-        callback(photos);
-      } else {
-        // Fallback to default_user shared pool if this device has 0 specific photos
-        getDocs(query(collection(db, 'users', 'default_user', 'Display_Photos'), orderBy('updatedAt', 'desc')))
-          .then((defaultSnap) => {
-            const photos: ScrapedPhoto[] = [];
-            defaultSnap.forEach((docSnap) => {
-              const data = docSnap.data();
-              if (data && data.url) {
-                photos.push({
-                  id: docSnap.id,
-                  url: data.url,
-                  updatedAt: data.updatedAt || Date.now(),
-                });
-              }
-            });
-            callback(photos);
-          })
-          .catch(() => callback([]));
-      }
+      const photos: ScrapedPhoto[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data && data.url) {
+          photos.push({
+            id: docSnap.id,
+            url: data.url,
+            updatedAt: data.updatedAt || Date.now(),
+          });
+        }
+      });
+      callback(photos);
     }, (error) => {
       console.error(`Firestore listener error for user ${userId}:`, error);
       callback([]);
@@ -103,36 +83,21 @@ export function subscribeUserDisplayPhotos(userId: string, callback: (photos: Sc
 }
 
 /**
- * Saves randomized display photos batch to a specific User's Firestore collection AND default_user pool.
+ * Saves randomized display photos batch strictly to a specific User's Firestore collection.
  */
 export async function saveUserDisplayPhotosBatch(userId: string, photos: ScrapedPhoto[]): Promise<boolean> {
   if (!userId) return false;
   try {
     const userPhotosRef = collection(db, 'users', userId, 'Display_Photos');
-    const defaultPhotosRef = collection(db, 'users', 'default_user', 'Display_Photos');
-
-    const [userExisting, defaultExisting] = await Promise.all([
-      getDocs(userPhotosRef),
-      getDocs(defaultPhotosRef),
-    ]);
-
+    const userExisting = await getDocs(userPhotosRef);
     const batch = writeBatch(db);
 
     userExisting.forEach((docSnap) => batch.delete(docSnap.ref));
-    defaultExisting.forEach((docSnap) => batch.delete(docSnap.ref));
 
     photos.forEach((photo, index) => {
       const docId = `photo_${index.toString().padStart(2, '0')}`;
-      
       const userDocRef = doc(db, 'users', userId, 'Display_Photos', docId);
       batch.set(userDocRef, {
-        url: photo.url,
-        updatedAt: photo.updatedAt || Date.now(),
-        order: index,
-      });
-
-      const defaultDocRef = doc(db, 'users', 'default_user', 'Display_Photos', docId);
-      batch.set(defaultDocRef, {
         url: photo.url,
         updatedAt: photo.updatedAt || Date.now(),
         order: index,
@@ -140,7 +105,7 @@ export async function saveUserDisplayPhotosBatch(userId: string, photos: Scraped
     });
 
     await batch.commit();
-    console.log(`Successfully committed ${photos.length} photos to Firestore for user ${userId} and default_user`);
+    console.log(`Successfully committed ${photos.length} photos to Firestore for user ${userId}`);
     return true;
   } catch (err) {
     console.error(`Error committing batch write for user ${userId}:`, err);
@@ -179,23 +144,5 @@ export function subscribeUserSettingsFromFirestore(userId: string, callback: (co
   } catch (err) {
     console.error(`Error subscribing to user settings from Firestore for user ${userId}:`, err);
     return () => {};
-  }
-}
-
-/**
- * Wipes legacy global Current_Display_Photos collection.
- */
-export async function wipeLegacyGlobalPhotosCollection(): Promise<void> {
-  try {
-    const globalDocs = await getDocs(collection(db, 'Current_Display_Photos'));
-    if (globalDocs.empty) return;
-    const batch = writeBatch(db);
-    globalDocs.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
-    });
-    await batch.commit();
-    console.log('Legacy global Current_Display_Photos collection wiped successfully.');
-  } catch (err) {
-    console.error('Error wiping legacy global collection:', err);
   }
 }
