@@ -43,7 +43,18 @@ function googlePhotosProxyPlugin(): Plugin {
   };
 }
 
+const buildTimestamp = Date.now();
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), googlePhotosProxyPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: `assets/[name]-${buildTimestamp}.js`,
+        chunkFileNames: `assets/[name]-${buildTimestamp}.js`,
+        assetFileNames: `assets/[name]-${buildTimestamp}.[ext]`
+      }
+    }
+  }
 })
