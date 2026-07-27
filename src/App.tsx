@@ -1248,10 +1248,17 @@ export default function App() {
                     </button>
                   </div>
                   <div className="synced-library-meta">
-                    <p><strong>Database Target:</strong> Firestore collection <code>Current_Display_Photos</code></p>
-                    <p><strong>Active Pool:</strong> {firestorePhotosCount > 0 ? `${firestorePhotosCount} randomized 1080p wallpapers (video play overlays suppressed)` : 'Initializing sync...'}</p>
+                    <p><strong>Database Target:</strong> <code>users/{activeUserId}/Display_Photos</code></p>
+                    <p>
+                      <strong>Active Pool:</strong>{' '}
+                      {isSyncingPhotos
+                        ? '⏳ Syncing 24-photo batch to Firestore... (takes ~2s)'
+                        : firestorePhotosCount > 0
+                        ? `🟢 ${firestorePhotosCount} active 1080p wallpapers (video overlays suppressed)`
+                        : 'Ready to sync. Click "Sync New 24-Photo Batch to Firestore" below!'}
+                    </p>
                     <p className="synced-library-note">
-                      💡 <em>Syncing a new 24-photo batch overwrites the 24 active display slots in Firestore with 24 freshly randomized photos sliced from your 302-photo album.</em>
+                      💡 <em>Syncing a new 24-photo batch overwrites the 24 active display slots in Firestore with 24 freshly randomized photos sliced from your 302-photo album in under 2 seconds.</em>
                     </p>
                   </div>
                 </div>
@@ -1279,10 +1286,12 @@ export default function App() {
               />
               <div style={{ padding: '0.65rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', marginTop: '0.45rem' }}>
                 <span className="settings-label" style={{ fontSize: '0.78rem' }}>Firestore Database Sync Status:</span>
-                <p className="settings-subtext" style={{ fontSize: '0.78rem', color: firestorePhotosCount > 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)', fontWeight: 'bold', marginTop: '0.15rem' }}>
-                  {firestorePhotosCount > 0
+                <p className="settings-subtext" style={{ fontSize: '0.78rem', color: isSyncingPhotos ? '#60a5fa' : firestorePhotosCount > 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)', fontWeight: 'bold', marginTop: '0.15rem' }}>
+                  {isSyncingPhotos
+                    ? '⏳ Syncing 24-photo batch to Firestore (~2 seconds)...'
+                    : firestorePhotosCount > 0
                     ? `✓ Firestore Database: ${firestorePhotosCount} active randomized 1080p wallpapers` 
-                    : '⚠ Initializing Firestore database sync...'}
+                    : 'ℹ️ Ready to sync. Click button below to fetch 24 randomized photos!'}
                 </p>
                 <button
                   type="button"
