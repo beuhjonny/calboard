@@ -187,7 +187,8 @@ export async function deleteGoogleTask(accessToken: string, taskId: string): Pro
  * Tries the local dev server proxy first, then falls back to public CORS proxies.
  */
 export async function fetchSharedAlbumPhotos(albumUrl: string): Promise<string[]> {
-  if (!albumUrl) return [];
+  const targetUrl = (albumUrl || '').trim();
+  if (!targetUrl) return [];
 
   const proxies = [
     (url: string) => `/api/google-photos-proxy?url=${encodeURIComponent(url)}`,
@@ -197,10 +198,10 @@ export async function fetchSharedAlbumPhotos(albumUrl: string): Promise<string[]
   ];
 
   for (let i = 0; i < proxies.length; i++) {
-    const proxyUrl = proxies[i](albumUrl);
+    const proxyUrl = proxies[i](targetUrl);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
       const response = await fetch(proxyUrl, { signal: controller.signal });
       clearTimeout(timeoutId);

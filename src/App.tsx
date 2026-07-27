@@ -41,7 +41,7 @@ const DEFAULT_CONFIG: DashboardConfig = {
   showTodos: true,
   photoRefreshMinutes: 5,
   weatherForecastDays: 3,
-  googlePhotosSharedLink: 'https://photos.google.com/share/AF1QipMBAKq8t3HTdPRUYLYUF16jW1SmYIV-Kv3T6-WLbIl7k_ZxjzUJgKgmfph2wKWfow?key=MTRzd1p0VEd6N1NjcVZsZEhCTndqNWNSdXBBcnp3',
+  googlePhotosSharedLink: '',
   glassOpacity: 45,
   bgOverlayOpacity: 50,
   photoFitMode: 'ambient',
