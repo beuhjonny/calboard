@@ -329,6 +329,18 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Preload next wallpaper image in browser cache for instantaneous zero-flicker cross-fade
+  useEffect(() => {
+    if (backgrounds.length > 1) {
+      const nextIndex = (bgIndex + 1) % backgrounds.length;
+      const nextUrl = backgrounds[nextIndex];
+      if (nextUrl) {
+        const img = new Image();
+        img.src = nextUrl;
+      }
+    }
+  }, [bgIndex, backgrounds]);
+
   // Background Image Rotator (Random Selection)
   useEffect(() => {
     const duration = config.photoRefreshMinutes * 60 * 1000;
