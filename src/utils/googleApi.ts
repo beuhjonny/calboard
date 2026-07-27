@@ -29,7 +29,7 @@ export function loginWithGoogle(
 
     const client = google.accounts.oauth2.initTokenClient({
       client_id: cleanClientId,
-      scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks',
+      scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
       callback: (response: any) => {
         if (response.error) {
           onError(response);
@@ -47,6 +47,24 @@ export function loginWithGoogle(
   } catch (error) {
     onError(error);
   }
+}
+
+/**
+ * Fetches user profile info (email) from Google OAuth endpoint.
+ */
+export async function fetchGoogleUserProfile(accessToken: string): Promise<{ email: string; name?: string }> {
+  try {
+    const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return { email: data.email || '', name: data.name };
+    }
+  } catch (e) {
+    console.warn('Could not fetch user profile info:', e);
+  }
+  return { email: '' };
 }
 
 /**

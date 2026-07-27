@@ -29,7 +29,8 @@ import {
   createGoogleTask, 
   updateGoogleTask, 
   deleteGoogleTask, 
-  fetchSharedAlbumPhotos
+  fetchSharedAlbumPhotos,
+  fetchGoogleUserProfile
 } from './utils/googleApi';
 import type { TokenResponse } from './utils/googleApi';
 import { fetchLiveWeatherKeyless } from './utils/weatherApi';
@@ -227,8 +228,13 @@ export default function App() {
   // Modals & Drawers state
   const [isWeatherModalOpen, setIsWeatherModalOpen] = useState<boolean>(false);
 
+  // State for logged in Google User email
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    return localStorage.getItem('google_user_email') || '';
+  });
+
   // Get or derive active user ID for multi-tenant isolation
-  const activeUserId = getActiveUserId(token ? 'user_google_account' : undefined);
+  const activeUserId = getActiveUserId(userEmail || (token ? 'user_google_account' : undefined));
 
   // Save config changes to local storage and user-scoped Firestore
   useEffect(() => {
@@ -281,12 +287,22 @@ export default function App() {
     };
   }, []);
 
-  // Save token changes
+  // Save token changes and fetch user profile
   useEffect(() => {
     if (token) {
       localStorage.setItem('google_access_token', JSON.stringify(token));
+      if (isTokenValid(token)) {
+        fetchGoogleUserProfile(token.access_token).then((profile) => {
+          if (profile.email) {
+            setUserEmail(profile.email);
+            localStorage.setItem('google_user_email', profile.email);
+          }
+        });
+      }
     } else {
       localStorage.removeItem('google_access_token');
+      localStorage.removeItem('google_user_email');
+      setUserEmail('');
     }
   }, [token]);
 
