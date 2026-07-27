@@ -33,7 +33,13 @@ import {
 } from './utils/googleApi';
 import type { TokenResponse } from './utils/googleApi';
 import { fetchLiveWeatherKeyless } from './utils/weatherApi';
-import { subscribeCurrentDisplayPhotos, saveDisplayPhotosBatch } from './utils/firebase';
+import { 
+  getActiveUserId, 
+  subscribeUserDisplayPhotos, 
+  saveUserDisplayPhotosBatch, 
+  saveUserSettingsToFirestore, 
+  subscribeUserSettingsFromFirestore 
+} from './utils/firebase';
 import { selectAndFormatDisplayPhotos } from './utils/photoScraper';
 
 // Default mock configuration
@@ -221,10 +227,14 @@ export default function App() {
   // Modals & Drawers state
   const [isWeatherModalOpen, setIsWeatherModalOpen] = useState<boolean>(false);
 
-  // Save config changes
+  // Get or derive active user ID for multi-tenant isolation
+  const activeUserId = getActiveUserId(token ? 'user_google_account' : undefined);
+
+  // Save config changes to local storage and user-scoped Firestore
   useEffect(() => {
     localStorage.setItem('calboard_config', JSON.stringify(config));
-  }, [config]);
+    saveUserSettingsToFirestore(activeUserId, config);
+  }, [config, activeUserId]);
 
   // ESC key to dismiss weather modal or settings drawer
   useEffect(() => {
@@ -265,12 +275,12 @@ export default function App() {
     return () => clearInterval(interval);
   }, [config.weatherLocation]);
 
-  // Real-time listener for Firestore Current_Display_Photos collection
+  // Real-time listener for user-scoped Firestore photos & settings
   const [firestorePhotosCount, setFirestorePhotosCount] = useState<number>(0);
   const [isSyncingPhotos, setIsSyncingPhotos] = useState<boolean>(false);
 
   useEffect(() => {
-    const unsubscribe = subscribeCurrentDisplayPhotos((photos) => {
+    const unsubscribePhotos = subscribeUserDisplayPhotos(activeUserId, (photos) => {
       if (photos && photos.length > 0) {
         const urls = photos.map(p => p.url);
         setBackgrounds(urls);
@@ -282,8 +292,17 @@ export default function App() {
       }
     });
 
-    return () => unsubscribe();
-  }, []);
+    const unsubscribeSettings = subscribeUserSettingsFromFirestore(activeUserId, (cloudConfig) => {
+      if (cloudConfig && Object.keys(cloudConfig).length > 0) {
+        setConfig((prev) => ({ ...prev, ...cloudConfig }));
+      }
+    });
+
+    return () => {
+      unsubscribePhotos();
+      unsubscribeSettings();
+    };
+  }, [activeUserId]);
 
   const triggerAlbumSyncToFirestore = async () => {
     const albumUrl = config.googlePhotosSharedLink || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
@@ -292,7 +311,7 @@ export default function App() {
       const urls = await fetchSharedAlbumPhotos(albumUrl);
       if (urls.length > 0) {
         const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
-        await saveDisplayPhotosBatch(displayPhotos);
+        await saveUserDisplayPhotosBatch(activeUserId, displayPhotos);
       }
     } catch (err) {
       console.error('Error syncing photos to Firestore:', err);
@@ -305,7 +324,7 @@ export default function App() {
     setConfig({ ...config, googlePhotosSharedLink: '' });
     setIsSyncingPhotos(true);
     try {
-      await saveDisplayPhotosBatch([]);
+      await saveUserDisplayPhotosBatch(activeUserId, []);
       setBackgrounds(DEFAULT_BACKGROUNDS);
       setFirestorePhotosCount(0);
     } catch (err) {

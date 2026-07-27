@@ -5,11 +5,13 @@ import {
   getDocs, 
   writeBatch, 
   doc, 
+  setDoc,
   onSnapshot,
   query,
   orderBy
 } from 'firebase/firestore';
 import type { ScrapedPhoto } from './photoScraper';
+import type { DashboardConfig } from '../types';
 
 // Firebase configuration for Project beuhcalboard
 const firebaseConfig = {
@@ -22,39 +24,41 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-const COLLECTION_NAME = 'Current_Display_Photos';
-
 /**
- * Fetches the active array of 24 display photos stored in Firestore.
+ * Helper to get or generate a unique persistent Client Device/User ID.
+ * If the user is logged into Google OAuth, we use a sanitized version of their Google email / user identifier.
+ * If not logged in, we use a persistent device ID stored in localStorage.
  */
-export async function fetchCurrentDisplayPhotos(): Promise<ScrapedPhoto[]> {
-  try {
-    const q = query(collection(db, COLLECTION_NAME), orderBy('updatedAt', 'desc'));
-    const snapshot = await getDocs(q);
-    const photos: ScrapedPhoto[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data && data.url) {
-        photos.push({
-          id: docSnap.id,
-          url: data.url,
-          updatedAt: data.updatedAt || Date.now(),
-        });
-      }
-    });
-    return photos;
-  } catch (err) {
-    console.error('Error fetching Current_Display_Photos from Firestore:', err);
-    return [];
+export function getActiveUserId(googleUserEmail?: string): string {
+  if (googleUserEmail && googleUserEmail.trim().length > 0) {
+    const sanitized = googleUserEmail.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+    return `user_${sanitized}`;
   }
+
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+    let deviceId = localStorage.getItem('calboard_device_id');
+    if (!deviceId) {
+      deviceId = 'device_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+      localStorage.setItem('calboard_device_id', deviceId);
+    }
+    return deviceId;
+  }
+
+  return 'device_cli_runner';
 }
 
 /**
- * Subscribes to real-time updates for Current_Display_Photos in Firestore.
+ * Subscribes to real-time updates for a specific User's Display_Photos collection in Firestore.
+ * Path: /users/{userId}/Display_Photos
  */
-export function subscribeCurrentDisplayPhotos(callback: (photos: ScrapedPhoto[]) => void): () => void {
+export function subscribeUserDisplayPhotos(userId: string, callback: (photos: ScrapedPhoto[]) => void): () => void {
+  if (!userId) {
+    callback([]);
+    return () => {};
+  }
   try {
-    const q = query(collection(db, COLLECTION_NAME), orderBy('updatedAt', 'desc'));
+    const userPhotosRef = collection(db, 'users', userId, 'Display_Photos');
+    const q = query(userPhotosRef, orderBy('updatedAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const photos: ScrapedPhoto[] = [];
       snapshot.forEach((docSnap) => {
@@ -69,32 +73,33 @@ export function subscribeCurrentDisplayPhotos(callback: (photos: ScrapedPhoto[])
       });
       callback(photos);
     }, (error) => {
-      console.error('Firestore listener error:', error);
+      console.error(`Firestore listener error for user ${userId}:`, error);
       callback([]);
     });
   } catch (err) {
-    console.error('Error subscribing to Firestore Current_Display_Photos:', err);
+    console.error(`Error subscribing to Firestore photos for user ${userId}:`, err);
     callback([]);
     return () => {};
   }
 }
 
 /**
- * Wipes the existing Current_Display_Photos collection and executes a batch write to push 24 newly randomized URLs.
+ * Saves randomized display photos batch to a specific User's Firestore collection.
+ * Path: /users/{userId}/Display_Photos
  */
-export async function saveDisplayPhotosBatch(photos: ScrapedPhoto[]): Promise<boolean> {
+export async function saveUserDisplayPhotosBatch(userId: string, photos: ScrapedPhoto[]): Promise<boolean> {
+  if (!userId) return false;
   try {
-    // 1. Fetch existing documents to delete
-    const existingDocs = await getDocs(collection(db, COLLECTION_NAME));
+    const userPhotosRef = collection(db, 'users', userId, 'Display_Photos');
+    const existingDocs = await getDocs(userPhotosRef);
     const batch = writeBatch(db);
 
     existingDocs.forEach((docSnap) => {
       batch.delete(docSnap.ref);
     });
 
-    // 2. Add newly randomized photo documents
     photos.forEach((photo, index) => {
-      const docRef = doc(db, COLLECTION_NAME, `photo_${index.toString().padStart(2, '0')}`);
+      const docRef = doc(db, 'users', userId, 'Display_Photos', `photo_${index.toString().padStart(2, '0')}`);
       batch.set(docRef, {
         url: photo.url,
         updatedAt: photo.updatedAt || Date.now(),
@@ -102,12 +107,64 @@ export async function saveDisplayPhotosBatch(photos: ScrapedPhoto[]): Promise<bo
       });
     });
 
-    // 3. Commit atomic batch write
     await batch.commit();
-    console.log(`Successfully committed ${photos.length} photos to Firestore collection ${COLLECTION_NAME}`);
+    console.log(`Successfully committed ${photos.length} photos to Firestore for user ${userId}`);
     return true;
   } catch (err) {
-    console.error('Error committing batch write to Firestore:', err);
+    console.error(`Error committing batch write for user ${userId}:`, err);
     return false;
+  }
+}
+
+/**
+ * Saves DashboardConfig to Firestore for a specific user to sync settings across all devices.
+ * Path: /users/{userId}/Settings/dashboardConfig
+ */
+export async function saveUserSettingsToFirestore(userId: string, config: DashboardConfig): Promise<void> {
+  if (!userId) return;
+  try {
+    const userConfigDoc = doc(db, 'users', userId, 'Settings', 'dashboardConfig');
+    await setDoc(userConfigDoc, {
+      ...config,
+      updatedAt: Date.now(),
+    }, { merge: true });
+  } catch (err) {
+    console.error(`Error saving user settings to Firestore for user ${userId}:`, err);
+  }
+}
+
+/**
+ * Subscribes to real-time DashboardConfig updates from Firestore for a specific user.
+ */
+export function subscribeUserSettingsFromFirestore(userId: string, callback: (config: Partial<DashboardConfig>) => void): () => void {
+  if (!userId) return () => {};
+  try {
+    const userConfigDoc = doc(db, 'users', userId, 'Settings', 'dashboardConfig');
+    return onSnapshot(userConfigDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.data() as Partial<DashboardConfig>);
+      }
+    });
+  } catch (err) {
+    console.error(`Error subscribing to user settings from Firestore for user ${userId}:`, err);
+    return () => {};
+  }
+}
+
+/**
+ * Wipes the legacy global Current_Display_Photos collection to ensure privacy.
+ */
+export async function wipeLegacyGlobalPhotosCollection(): Promise<void> {
+  try {
+    const globalDocs = await getDocs(collection(db, 'Current_Display_Photos'));
+    if (globalDocs.empty) return;
+    const batch = writeBatch(db);
+    globalDocs.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+    console.log('Legacy global Current_Display_Photos collection wiped successfully.');
+  } catch (err) {
+    console.error('Error wiping legacy global collection:', err);
   }
 }

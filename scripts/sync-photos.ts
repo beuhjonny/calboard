@@ -1,17 +1,24 @@
 import { extractRawPhotoUrls, selectAndFormatDisplayPhotos } from '../src/utils/photoScraper';
-import { saveDisplayPhotosBatch } from '../src/utils/firebase';
+import { saveUserDisplayPhotosBatch, getActiveUserId, wipeLegacyGlobalPhotosCollection } from '../src/utils/firebase';
 
 const DEFAULT_ALBUM_URL = 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
 
-export async function runPhotoSync(albumUrl?: string) {
+export async function runPhotoSync(albumUrl?: string, userEmail?: string) {
   const targetAlbum = albumUrl || process.argv[2] || DEFAULT_ALBUM_URL;
+  const targetUserEmail = userEmail || process.env.USER_EMAIL || '';
+  const userId = getActiveUserId(targetUserEmail);
+
   console.log(`=======================================================`);
-  console.log(`[Google Photos Sync Engine] Starting sync process...`);
+  console.log(`[Google Photos Sync Engine] Starting user-scoped sync...`);
+  console.log(`Target User ID: ${userId}`);
   console.log(`Target Album URL: ${targetAlbum}`);
   console.log(`=======================================================`);
 
   try {
-    // 1. Fetch raw album HTML via Node fetch (no CORS limitations in Node)
+    // Clean up legacy global collection
+    await wipeLegacyGlobalPhotosCollection();
+
+    // 1. Fetch raw album HTML via Node fetch
     const response = await fetch(targetAlbum, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -31,19 +38,19 @@ export async function runPhotoSync(albumUrl?: string) {
     console.log(`Extracted ${rawUrls.length} unique raw image URLs from album payload.`);
 
     if (rawUrls.length === 0) {
-      throw new Error('No valid lh3.googleusercontent.com photo URLs found in album payload.');
+      throw new Error('No valid photo URLs found in album payload.');
     }
 
-    // 3. Randomize via Fisher-Yates shuffle and select 24 formatted photos (=w1920-h1080)
+    // 3. Randomize via Fisher-Yates shuffle and format (=w1920-h1080-no)
     const displayPhotos = selectAndFormatDisplayPhotos(rawUrls, 24);
     console.log(`Randomized pool and selected ${displayPhotos.length} target 1080p photos.`);
 
-    // 4. Batch write to Firestore collection Current_Display_Photos
-    console.log(`Executing Firestore atomic batch write...`);
-    const success = await saveDisplayPhotosBatch(displayPhotos);
+    // 4. User-scoped batch write to /users/{userId}/Display_Photos
+    console.log(`Executing user-scoped Firestore atomic batch write...`);
+    const success = await saveUserDisplayPhotosBatch(userId, displayPhotos);
 
     if (success) {
-      console.log(`✓ SUCCESS! ${displayPhotos.length} randomized photos active in Firestore.`);
+      console.log(`✓ SUCCESS! ${displayPhotos.length} randomized photos active in Firestore for user ${userId}.`);
     } else {
       console.error(`❌ Firestore batch write failed.`);
     }

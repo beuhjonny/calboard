@@ -1,10 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /Current_Display_Photos/{document=**} {
+    // Per-User Scoped Collections (Display_Photos, Settings, etc.)
+    match /users/{userId}/{document=**} {
       allow read, write: if true;
     }
-    match /{document=**} {
+    // Legacy support
+    match /Current_Display_Photos/{document=**} {
       allow read, write: if true;
     }
   }
