@@ -319,7 +319,21 @@ export default function App() {
         setBackgrounds(urls);
         setFirestorePhotosCount(urls.length);
         setBgIndex((prev) => prev % urls.length);
+        try {
+          localStorage.setItem('calboard_cached_wallpapers', JSON.stringify(urls));
+        } catch (e) {}
       } else {
+        const cached = localStorage.getItem('calboard_cached_wallpapers');
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setBackgrounds(parsed);
+              setFirestorePhotosCount(parsed.length);
+              return;
+            }
+          } catch (e) {}
+        }
         setBackgrounds(DEFAULT_BACKGROUNDS);
         setFirestorePhotosCount(0);
       }

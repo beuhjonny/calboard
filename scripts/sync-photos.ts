@@ -1,11 +1,11 @@
 import { extractRawPhotoUrls, selectAndFormatDisplayPhotos } from '../src/utils/photoScraper';
-import { saveUserDisplayPhotosBatch, getActiveUserId, wipeLegacyGlobalPhotosCollection } from '../src/utils/firebase';
+import { saveUserDisplayPhotosBatch, getActiveUserId } from '../src/utils/firebase';
 
 const DEFAULT_ALBUM_URL = 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
 
 export async function runPhotoSync(albumUrl?: string, userEmail?: string) {
   const targetAlbum = albumUrl || process.argv[2] || DEFAULT_ALBUM_URL;
-  const targetUserEmail = userEmail || process.env.USER_EMAIL || '';
+  const targetUserEmail = userEmail || process.argv[3] || process.env.USER_EMAIL || '';
   const userId = getActiveUserId(targetUserEmail);
 
   console.log(`=======================================================`);
@@ -15,8 +15,6 @@ export async function runPhotoSync(albumUrl?: string, userEmail?: string) {
   console.log(`=======================================================`);
 
   try {
-    // Clean up legacy global collection
-    await wipeLegacyGlobalPhotosCollection();
 
     // 1. Fetch raw album HTML via Node fetch
     const response = await fetch(targetAlbum, {
