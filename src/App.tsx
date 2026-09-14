@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Calendar as CalendarIcon, 
   CheckSquare, 
@@ -139,7 +139,7 @@ export default function App() {
 
   // Clean up PWA cache on new builds without polluting URL
   useEffect(() => {
-    const CURRENT_VERSION = 'v2.1.0-lowres-pwa';
+    const CURRENT_VERSION = 'v3.7.0-clean-settings';
     const lastVersion = localStorage.getItem('calboard_pwa_version');
     if (lastVersion !== CURRENT_VERSION) {
       localStorage.setItem('calboard_pwa_version', CURRENT_VERSION);
@@ -189,10 +189,42 @@ export default function App() {
   // Get or derive active user ID for multi-tenant isolation
   const activeUserId = getActiveUserId(userEmail || (token ? 'user_google_account' : undefined));
 
-  // Save config changes to local storage and user-scoped Firestore
+  // Ref to prevent echo feedback loops between Firestore and React state
+  const isRemoteSyncRef = useRef<boolean>(false);
+
+  // Helper to test if two configs are functionally identical to prevent re-render loops
+  const areConfigsEqual = (a: DashboardConfig, b: Partial<DashboardConfig>): boolean => {
+    if (!b) return true;
+    const keys: (keyof DashboardConfig)[] = [
+      'googleClientId',
+      'weatherLocation',
+      'showTodos',
+      'photoRefreshMinutes',
+      'weatherForecastDays',
+      'googlePhotosSharedLink',
+      'glassOpacity',
+      'bgOverlayOpacity',
+      'photoFitMode',
+      'autoSyncIntervalHours',
+      'keepScreenAwake',
+    ];
+    return keys.every((key) => {
+      if (b[key] === undefined) return true;
+      return a[key] === b[key];
+    });
+  };
+
+  // Save config changes to local storage and user-scoped Firestore (debounced to prevent spam/blinking)
   useEffect(() => {
     localStorage.setItem('calboard_config', JSON.stringify(config));
-    saveUserSettingsToFirestore(activeUserId, config);
+    if (isRemoteSyncRef.current) {
+      isRemoteSyncRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      saveUserSettingsToFirestore(activeUserId, config);
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [config, activeUserId]);
 
   // ESC key to dismiss weather modal or settings drawer
@@ -281,7 +313,9 @@ export default function App() {
 
   // Real-time listener for user-scoped Firestore photos & settings
   const [firestorePhotosCount, setFirestorePhotosCount] = useState<number>(0);
+  const [wallpaperPool, setWallpaperPool] = useState<string[]>([]);
   const [isSyncingPhotos, setIsSyncingPhotos] = useState<boolean>(false);
+  const [syncStatusMessage, setSyncStatusMessage] = useState<string>('');
 
   useEffect(() => {
     // CRITICAL PRIVACY & SECURITY GUARD:
@@ -289,10 +323,14 @@ export default function App() {
     if (!token) {
       setBackgrounds(DEFAULT_BACKGROUNDS);
       setFirestorePhotosCount(0);
+      setWallpaperPool([]);
       return;
     }
 
-    const unsubscribePhotos = subscribeUserDisplayPhotos(activeUserId, (photos) => {
+    const unsubscribePhotos = subscribeUserDisplayPhotos(activeUserId, (photos, pool) => {
+      if (pool && pool.length > 0) {
+        setWallpaperPool(pool);
+      }
       if (photos && photos.length > 0) {
         const urls = photos.map(p => p.url);
         setBackgrounds(urls);
@@ -320,7 +358,13 @@ export default function App() {
 
     const unsubscribeSettings = subscribeUserSettingsFromFirestore(activeUserId, (cloudConfig) => {
       if (cloudConfig && Object.keys(cloudConfig).length > 0) {
-        setConfig((prev) => ({ ...prev, ...cloudConfig }));
+        setConfig((prev) => {
+          if (areConfigsEqual(prev, cloudConfig)) {
+            return prev;
+          }
+          isRemoteSyncRef.current = true;
+          return { ...prev, ...cloudConfig };
+        });
       }
     });
 
@@ -331,32 +375,49 @@ export default function App() {
   }, [token, activeUserId]);
 
   const triggerAlbumSyncToFirestore = async () => {
-    const albumUrl = config.googlePhotosSharedLink || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
     setIsSyncingPhotos(true);
+    setSyncStatusMessage('');
     try {
-      const urls = await fetchSharedAlbumPhotos(albumUrl);
-      if (urls.length > 0) {
-        const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
-        await saveUserDisplayPhotosBatch(activeUserId, displayPhotos);
+      if (wallpaperPool.length > 0) {
+        // Fast, zero-CORS local shuffle from 300+ album pool stored in Firestore
+        const displayPhotos = selectAndFormatDisplayPhotos(wallpaperPool, 24);
+        await saveUserDisplayPhotosBatch(activeUserId, displayPhotos, config.googlePhotosSharedLink, wallpaperPool);
+        setSyncStatusMessage('✓ Rotated 24 fresh photos from album!');
+      } else {
+        const albumUrl = config.googlePhotosSharedLink || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
+        const urls = await fetchSharedAlbumPhotos(albumUrl);
+        if (urls.length > 0) {
+          const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
+          await saveUserDisplayPhotosBatch(activeUserId, displayPhotos, albumUrl, urls);
+          setWallpaperPool(urls);
+          setSyncStatusMessage(`✓ Synced ${urls.length} photos!`);
+        } else {
+          setSyncStatusMessage('Automated cloud sync runs twice daily. Album link saved.');
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error syncing photos to Firestore:', err);
+      setSyncStatusMessage('Sync error. Automated cloud sync runs twice daily.');
     } finally {
       setIsSyncingPhotos(false);
+      setTimeout(() => setSyncStatusMessage(''), 4000);
     }
   };
 
   const handleRemoveSharedLibrary = async () => {
-    setConfig({ ...config, googlePhotosSharedLink: '' });
+    setConfig((prev) => ({ ...prev, googlePhotosSharedLink: '' }));
     setIsSyncingPhotos(true);
     try {
-      await saveUserDisplayPhotosBatch(activeUserId, []);
+      await saveUserDisplayPhotosBatch(activeUserId, [], '');
       setBackgrounds(DEFAULT_BACKGROUNDS);
       setFirestorePhotosCount(0);
+      setWallpaperPool([]);
+      setSyncStatusMessage('Album removed. Displaying default nature wallpapers.');
     } catch (err) {
       console.error('Error clearing shared library:', err);
     } finally {
       setIsSyncingPhotos(false);
+      setTimeout(() => setSyncStatusMessage(''), 4000);
     }
   };
 
@@ -1073,7 +1134,12 @@ export default function App() {
             {token !== null ? (
               <div className="settings-group">
                 <div className="settings-status-box settings-status-success">
-                  <span>Logged in with Google</span>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: 600 }}>Google Account Connected</span>
+                    {userEmail && (
+                      <span style={{ fontSize: '0.75rem', opacity: 0.85, marginTop: '0.1rem' }}>{userEmail}</span>
+                    )}
+                  </div>
                   <FolderHeart size={16} />
                 </div>
                 <button 
@@ -1243,137 +1309,135 @@ export default function App() {
             </div>
           </div>
 
-          {/* GOOGLE PHOTOS ALBUM WALLPAPER CONFIG */}
+          {/* GOOGLE PHOTOS ALBUM WALLPAPERS */}
           <div className="settings-section">
-            <h3 className="settings-section-title">Google Photos Wallpaper Settings</h3>
-            
-            {/* Photo Refresh Interval */}
+            <h3 className="settings-section-title">Google Photos Wallpapers</h3>
+
+            {/* Public shared album link */}
             <div className="settings-group">
-              <label className="settings-label">Photo Rotation Interval (Minutes)</label>
-              <input
-                type="number"
-                min="1"
-                max="120"
-                value={config.photoRefreshMinutes}
-                onChange={(e) => setConfig({ ...config, photoRefreshMinutes: Math.max(1, parseInt(e.target.value) || 1) })}
-                className="settings-input"
-              />
+              <label className="settings-label">Album Share Link</label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <input
+                  type="text"
+                  value={config.googlePhotosSharedLink}
+                  onChange={(e) => setConfig({ ...config, googlePhotosSharedLink: e.target.value })}
+                  placeholder="https://photos.app.goo.gl/..."
+                  className="settings-input"
+                  style={{ flex: 1 }}
+                />
+                {config.googlePhotosSharedLink && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveSharedLibrary}
+                    className="settings-btn settings-btn-danger"
+                    style={{ width: 'auto', padding: '0 0.85rem' }}
+                    title="Remove album link and revert to default wallpapers"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+              <p className="settings-subtext">
+                Paste the public share link from your Google Photos album.
+              </p>
             </div>
 
-            {/* Scheduled Background Auto-Sync Selection */}
+            {/* Unified Status & Quick Shuffle Action */}
+            <div style={{
+              padding: '0.85rem 1rem',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              borderRadius: '10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.65rem',
+              marginTop: '0.25rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <FolderHeart size={16} style={{ color: firestorePhotosCount > 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)' }} />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'white' }}>
+                    {firestorePhotosCount > 0 
+                      ? `${firestorePhotosCount} Wallpapers Active` 
+                      : 'Default Nature Wallpapers'}
+                  </span>
+                </div>
+                {wallpaperPool.length > 0 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                    {wallpaperPool.length} in album pool
+                  </span>
+                )}
+              </div>
+
+              {syncStatusMessage ? (
+                <p style={{ fontSize: '0.75rem', color: '#60a5fa', margin: 0, fontWeight: 500 }}>
+                  {syncStatusMessage}
+                </p>
+              ) : (
+                <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', margin: 0 }}>
+                  Automatically rotates on schedule. Click below to shuffle fresh wallpapers now.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={triggerAlbumSyncToFirestore}
+                disabled={isSyncingPhotos}
+                className="settings-btn settings-btn-primary"
+                style={{ padding: '0.55rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+              >
+                <RefreshCw size={14} className={isSyncingPhotos ? 'animate-spin' : ''} />
+                {isSyncingPhotos ? 'Rotating Photos...' : 'Shuffle 24 Fresh Wallpapers'}
+              </button>
+            </div>
+
+            {/* Photo Rotation Interval */}
             <div className="settings-group" style={{ marginTop: '0.85rem' }}>
-              <label className="settings-label">Automated Scheduled Album Sync</label>
-              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.25rem' }}>
+              <label className="settings-label">Photo Rotation (Minutes)</label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                {[2, 5, 10, 15, 30].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setConfig({ ...config, photoRefreshMinutes: mins })}
+                    className={`settings-btn ${config.photoRefreshMinutes === mins ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                    style={{ flex: 1, padding: '0.45rem 0.2rem', fontSize: '0.75rem' }}
+                  >
+                    {mins}m
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Auto-Sync Schedule */}
+            <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+              <label className="settings-label">Automated Cloud Rotation</label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <button
                   type="button"
                   onClick={() => setConfig({ ...config, autoSyncIntervalHours: 12 })}
                   className={`settings-btn ${(config.autoSyncIntervalHours ?? 12) === 12 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                  style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
                 >
-                  ⏰ Every 12 Hours
+                  Every 12h
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfig({ ...config, autoSyncIntervalHours: 24 })}
                   className={`settings-btn ${config.autoSyncIntervalHours === 24 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                  style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
                 >
-                  🌙 Every 24 Hours
+                  Every 24h
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfig({ ...config, autoSyncIntervalHours: 0 })}
                   className={`settings-btn ${config.autoSyncIntervalHours === 0 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.5rem', fontSize: '0.75rem' }}
+                  style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
                 >
-                  🚫 Manual Only
+                  Manual
                 </button>
               </div>
-            </div>
-
-            {/* Active Synced Libraries Card */}
-            <div className="settings-group" style={{ marginTop: '0.85rem' }}>
-              <label className="settings-label">Active Synced Libraries</label>
-              {config.googlePhotosSharedLink || firestorePhotosCount > 0 ? (
-                <div className="synced-library-card">
-                  <div className="synced-library-header">
-                    <div className="synced-library-title">
-                      <FolderHeart size={16} style={{ color: 'var(--color-accent-emerald)' }} />
-                      <span>Kids Shared Album</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRemoveSharedLibrary}
-                      className="settings-btn settings-btn-danger"
-                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.72rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                      title="Remove library link and wipe Firestore wallpapers"
-                    >
-                      <Trash2 size={12} /> Remove Library
-                    </button>
-                  </div>
-                  <div className="synced-library-meta">
-                    <p><strong>Database Target:</strong> <code>users/{activeUserId}/Display_Photos</code></p>
-                    <p>
-                      <strong>Active Pool:</strong>{' '}
-                      {isSyncingPhotos
-                        ? '⏳ Syncing 24-photo batch to Firestore... (takes ~2s)'
-                        : firestorePhotosCount > 0
-                        ? `🟢 ${firestorePhotosCount} active 1080p wallpapers (video overlays suppressed)`
-                        : 'Ready to sync. Click "Sync New 24-Photo Batch to Firestore" below!'}
-                    </p>
-                    <p className="synced-library-note">
-                      💡 <em>Syncing a new 24-photo batch overwrites the 24 active display slots in Firestore with 24 freshly randomized photos sliced from your 302-photo album in under 2 seconds.</em>
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="synced-library-card" style={{ opacity: 0.75 }}>
-                  <div className="synced-library-header">
-                    <span className="synced-library-title" style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>No Custom Library Linked</span>
-                  </div>
-                  <p className="synced-library-note" style={{ marginTop: '0.2rem' }}>
-                    Displaying default curated wallpapers. Paste a Google Photos album share link below to sync your photos!
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Public shared album link & Firestore Sync status */}
-            <div className="settings-group">
-              <label className="settings-label">Google Photos Album Share Link</label>
-              <input
-                type="text"
-                value={config.googlePhotosSharedLink}
-                onChange={(e) => setConfig({ ...config, googlePhotosSharedLink: e.target.value })}
-                placeholder="https://photos.app.goo.gl/..."
-                className="settings-input"
-              />
-              <div style={{ padding: '0.65rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', marginTop: '0.45rem' }}>
-                <span className="settings-label" style={{ fontSize: '0.78rem' }}>Firestore Database Sync Status:</span>
-                <p className="settings-subtext" style={{ fontSize: '0.78rem', color: isSyncingPhotos ? '#60a5fa' : firestorePhotosCount > 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)', fontWeight: 'bold', marginTop: '0.15rem' }}>
-                  {isSyncingPhotos
-                    ? '⏳ Syncing 24-photo batch to Firestore (~2 seconds)...'
-                    : firestorePhotosCount > 0
-                    ? `✓ Firestore Database: ${firestorePhotosCount} active randomized 1080p wallpapers` 
-                    : 'ℹ️ Ready to sync. Click button below to fetch 24 randomized photos!'}
-                </p>
-                <button
-                  type="button"
-                  onClick={triggerAlbumSyncToFirestore}
-                  disabled={isSyncingPhotos}
-                  className="settings-btn settings-btn-primary"
-                  style={{ marginTop: '0.5rem', width: '100%', padding: '0.5rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-                >
-                  <RefreshCw size={14} className={isSyncingPhotos ? 'animate-spin' : ''} />
-                  {isSyncingPhotos ? 'Syncing Album to Firestore...' : 'Sync New 24-Photo Batch to Firestore'}
-                </button>
-              </div>
-              <p className="settings-subtext" style={{ fontSize: '0.72rem', marginTop: '0.45rem', lineHeight: '1.4' }}>
-                1. Open your album in Google Photos on your phone or web.<br/>
-                2. Click <strong>Share</strong> and generate a public link.<br/>
-                3. Copy and paste that link above.<br/>
-                <em>Note: No API Keys or Google Client configuration is required for wallpapers using this method!</em>
-              </p>
             </div>
           </div>
 

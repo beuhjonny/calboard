@@ -42,9 +42,9 @@ export async function runPhotoSync(albumUrl?: string, userEmail?: string) {
     const displayPhotos = selectAndFormatDisplayPhotos(rawUrls, 24);
     console.log(`Randomized pool and selected 24 target 1080p photos.`);
 
-    // 4. Single-document write to Firestore: users/{userId}/Wallpapers/active
+    // 4. Single-document write to Firestore: users/{userId}/Wallpapers/active (including full pool)
     console.log(`Writing to single Firestore document users/${userId}/Wallpapers/active...`);
-    const success = await saveUserDisplayPhotosBatch(userId, displayPhotos, targetAlbum);
+    const success = await saveUserDisplayPhotosBatch(userId, displayPhotos, targetAlbum, rawUrls);
 
     if (success) {
       console.log(`✓ SUCCESS! 24 randomized photos committed in 1 single Firestore document.`);

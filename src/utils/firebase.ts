@@ -24,8 +24,12 @@ export const db = getFirestore(app);
  */
 export function getActiveUserId(googleUserEmail?: string): string {
   if (googleUserEmail && googleUserEmail.trim().length > 0) {
-    const sanitized = googleUserEmail.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
-    return `user_${sanitized}`;
+    const trimmed = googleUserEmail.toLowerCase().trim();
+    if (trimmed === 'user_google_account' || trimmed === 'user_user_google_account') {
+      return 'user_user_google_account';
+    }
+    const sanitized = trimmed.replace(/[^a-z0-9]/g, '_');
+    return sanitized.startsWith('user_') ? sanitized : `user_${sanitized}`;
   }
 
   if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -42,28 +46,35 @@ export function getActiveUserId(googleUserEmail?: string): string {
 
 /**
  * Subscribes to real-time updates for a specific User's active wallpapers.
- * OPTIMIZATION: Uses a SINGLE document (users/{userId}/Wallpapers/active) to reduce
- * Firestore read/write quota consumption by 96% and eliminate RESOURCE_EXHAUSTED errors.
+ * Also returns the full photo pool if available so the client can shuffle locally.
+ * Includes automatic fallback to 'user_user_google_account' if user's personal doc is empty.
  */
-export function subscribeUserDisplayPhotos(userId: string, callback: (photos: ScrapedPhoto[]) => void): () => void {
+export function subscribeUserDisplayPhotos(
+  userId: string, 
+  callback: (photos: ScrapedPhoto[], pool?: string[], albumUrl?: string) => void
+): () => void {
   if (!userId) {
     callback([]);
     return () => {};
   }
   try {
-    // 1. Primary: Single Document listener (1 read per change instead of 24)
     const activeDocRef = doc(db, 'users', userId, 'Wallpapers', 'active');
     
-    return onSnapshot(activeDocRef, (docSnap) => {
+    let fallbackUnsubscribe: (() => void) | null = null;
+
+    const mainUnsubscribe = onSnapshot(activeDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        const pool: string[] = Array.isArray(data.pool) ? data.pool : [];
+        const albumUrl: string = data.albumUrl || '';
+
         if (data && Array.isArray(data.photos) && data.photos.length > 0) {
           const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => ({
             id: p.id || `photo_${idx}`,
             url: p.url || p,
             updatedAt: p.updatedAt || data.updatedAt || Date.now(),
           }));
-          callback(photos);
+          callback(photos, pool, albumUrl);
           return;
         } else if (data && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
           const photos: ScrapedPhoto[] = data.photoUrls.map((url: string, idx: number) => ({
@@ -71,30 +82,46 @@ export function subscribeUserDisplayPhotos(userId: string, callback: (photos: Sc
             url: url,
             updatedAt: data.updatedAt || Date.now(),
           }));
-          callback(photos);
+          callback(photos, pool, albumUrl);
           return;
         }
       }
 
-      // No photos found for this user
+      // If this user has no wallpapers and isn't already the default user account, check fallback
+      if (userId !== 'user_user_google_account' && !fallbackUnsubscribe) {
+        const fallbackDocRef = doc(db, 'users', 'user_user_google_account', 'Wallpapers', 'active');
+        fallbackUnsubscribe = onSnapshot(fallbackDocRef, (fallbackSnap) => {
+          if (fallbackSnap.exists()) {
+            const data = fallbackSnap.data();
+            const pool: string[] = Array.isArray(data.pool) ? data.pool : [];
+            const albumUrl: string = data.albumUrl || '';
+            if (data && Array.isArray(data.photos) && data.photos.length > 0) {
+              const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => ({
+                id: p.id || `photo_${idx}`,
+                url: p.url || p,
+                updatedAt: p.updatedAt || data.updatedAt || Date.now(),
+              }));
+              callback(photos, pool, albumUrl);
+              return;
+            }
+          }
+          callback([]);
+        });
+        return;
+      }
+
       callback([]);
     }, (error) => {
       console.warn(`[Firestore] Single-doc wallpaper listener warning for ${userId}:`, error.message);
-      // Try local cache on network/quota error
-      if (typeof localStorage !== 'undefined') {
-        const cached = localStorage.getItem('calboard_cached_wallpapers');
-        if (cached) {
-          try {
-            const urls = JSON.parse(cached);
-            if (Array.isArray(urls) && urls.length > 0) {
-              callback(urls.map((u: string, i: number) => ({ id: `cached_${i}`, url: u, updatedAt: Date.now() })));
-              return;
-            }
-          } catch (e) {}
-        }
-      }
       callback([]);
     });
+
+    return () => {
+      mainUnsubscribe();
+      if (fallbackUnsubscribe) {
+        fallbackUnsubscribe();
+      }
+    };
   } catch (err) {
     console.error(`Error subscribing to Firestore photos for user ${userId}:`, err);
     callback([]);
@@ -105,13 +132,18 @@ export function subscribeUserDisplayPhotos(userId: string, callback: (photos: Sc
 /**
  * Saves randomized display photos batch to a SINGLE Firestore document.
  * Path: users/{userId}/Wallpapers/active
- * Cost: Exactly 1 write operation!
+ * Also saves full album photo pool if supplied.
  */
-export async function saveUserDisplayPhotosBatch(userId: string, photos: ScrapedPhoto[], albumUrl?: string): Promise<boolean> {
+export async function saveUserDisplayPhotosBatch(
+  userId: string, 
+  photos: ScrapedPhoto[], 
+  albumUrl?: string,
+  pool?: string[]
+): Promise<boolean> {
   if (!userId) return false;
   try {
     const wallpaperDocRef = doc(db, 'users', userId, 'Wallpapers', 'active');
-    const payload = {
+    const payload: any = {
       photos: photos.map((photo, index) => ({
         id: `photo_${index.toString().padStart(2, '0')}`,
         url: photo.url,
@@ -124,8 +156,20 @@ export async function saveUserDisplayPhotosBatch(userId: string, photos: Scraped
       albumUrl: albumUrl || '',
     };
 
-    // 1 single atomic document write strictly to this user's path
-    await setDoc(wallpaperDocRef, payload);
+    if (pool && pool.length > 0) {
+      payload.pool = pool;
+      payload.poolSize = pool.length;
+    }
+
+    await setDoc(wallpaperDocRef, payload, { merge: true });
+
+    // Also write to user_user_google_account for device consistency
+    if (userId !== 'user_user_google_account') {
+      try {
+        const fallbackRef = doc(db, 'users', 'user_user_google_account', 'Wallpapers', 'active');
+        await setDoc(fallbackRef, payload, { merge: true });
+      } catch (e) {}
+    }
 
     console.log(`✓ Committed ${photos.length} photos in 1 single Firestore doc for ${userId}`);
     return true;
