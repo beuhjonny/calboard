@@ -3,7 +3,6 @@ import {
   getFirestore, 
   doc, 
   setDoc, 
-  getDoc, 
   onSnapshot 
 } from 'firebase/firestore';
 import type { ScrapedPhoto } from './photoScraper';
@@ -77,22 +76,8 @@ export function subscribeUserDisplayPhotos(userId: string, callback: (photos: Sc
         }
       }
 
-      // 2. Fallback: Check shared default user document if active user has no photos
-      if (userId !== 'user_google_account') {
-        const fallbackDocRef = doc(db, 'users', 'user_google_account', 'Wallpapers', 'active');
-        getDoc(fallbackDocRef).then((fallbackSnap) => {
-          if (fallbackSnap.exists()) {
-            const fbData = fallbackSnap.data();
-            if (fbData && Array.isArray(fbData.photos) && fbData.photos.length > 0) {
-              callback(fbData.photos);
-              return;
-            }
-          }
-          callback([]);
-        }).catch(() => callback([]));
-      } else {
-        callback([]);
-      }
+      // No photos found for this user
+      callback([]);
     }, (error) => {
       console.warn(`[Firestore] Single-doc wallpaper listener warning for ${userId}:`, error.message);
       // Try local cache on network/quota error
@@ -139,14 +124,8 @@ export async function saveUserDisplayPhotosBatch(userId: string, photos: Scraped
       albumUrl: albumUrl || '',
     };
 
-    // 1 single atomic document write
+    // 1 single atomic document write strictly to this user's path
     await setDoc(wallpaperDocRef, payload);
-
-    // Also mirror to user_google_account so any logged-in Google user on tablet receives it
-    if (userId !== 'user_google_account') {
-      const mirrorDocRef = doc(db, 'users', 'user_google_account', 'Wallpapers', 'active');
-      await setDoc(mirrorDocRef, payload);
-    }
 
     console.log(`✓ Committed ${photos.length} photos in 1 single Firestore doc for ${userId}`);
     return true;

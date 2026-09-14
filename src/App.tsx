@@ -68,55 +68,6 @@ const DEFAULT_BACKGROUNDS = [
   'https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=2070&auto=format&fit=crop',
 ];
 
-// Mock Calendar Events
-const MOCK_EVENTS: GoogleCalendarEvent[] = [
-  {
-    id: 'e1',
-    summary: 'Morning Workout (LiftLogic) 🏋️‍♂️',
-    start: { dateTime: new Date(new Date().setHours(8, 0, 0)).toISOString() },
-    end: { dateTime: new Date(new Date().setHours(9, 30, 0)).toISOString() },
-    location: 'Local Gym',
-    colorId: '2' // Greenish
-  },
-  {
-    id: 'e2',
-    summary: 'Coffee with Dave ☕',
-    start: { dateTime: new Date(new Date().setHours(10, 30, 0)).toISOString() },
-    end: { dateTime: new Date(new Date().setHours(11, 15, 0)).toISOString() },
-    location: 'Milano Espresso Bar'
-  },
-  {
-    id: 'e3',
-    summary: 'Design Review: Calboard',
-    start: { dateTime: new Date(new Date().setHours(13, 0, 0)).toISOString() },
-    end: { dateTime: new Date(new Date().setHours(14, 0, 0)).toISOString() },
-    location: 'Virtual Zoom'
-  },
-  {
-    id: 'e4',
-    summary: 'Grocery Shopping 🛒',
-    start: { dateTime: new Date(new Date().setHours(16, 30, 0)).toISOString() },
-    end: { dateTime: new Date(new Date().setHours(17, 30, 0)).toISOString() },
-    location: 'Metro Supermarket'
-  },
-  {
-    id: 'e5',
-    summary: 'Family Dinner Night 🍽️',
-    start: { dateTime: new Date(new Date().setHours(19, 0, 0)).toISOString() },
-    end: { dateTime: new Date(new Date().setHours(21, 30, 0)).toISOString() },
-    location: 'Parents House'
-  }
-];
-
-// Mock Tasks
-const MOCK_TASKS: GoogleTask[] = [
-  { id: 't1', title: 'Plan weekly lifting split on LiftLogic', status: 'needsAction' },
-  { id: 't2', title: 'Renew domain for calboard.app', status: 'needsAction' },
-  { id: 't3', title: 'Water balcony ferns & flowers', status: 'completed' },
-  { id: 't4', title: 'Reply to Sarah about weekend camping trip', status: 'needsAction' },
-  { id: 't5', title: 'Clean coffee grinder', status: 'needsAction' }
-];
-
 // Mock Weather with complete Hourly & 7-Day Extended Forecast
 const MOCK_WEATHER: WeatherData = {
   temp: 22,
@@ -333,6 +284,14 @@ export default function App() {
   const [isSyncingPhotos, setIsSyncingPhotos] = useState<boolean>(false);
 
   useEffect(() => {
+    // CRITICAL PRIVACY & SECURITY GUARD:
+    // When user is NOT logged in, strictly display public nature wallpapers!
+    if (!token) {
+      setBackgrounds(DEFAULT_BACKGROUNDS);
+      setFirestorePhotosCount(0);
+      return;
+    }
+
     const unsubscribePhotos = subscribeUserDisplayPhotos(activeUserId, (photos) => {
       if (photos && photos.length > 0) {
         const urls = photos.map(p => p.url);
@@ -340,10 +299,10 @@ export default function App() {
         setFirestorePhotosCount(urls.length);
         setBgIndex((prev) => prev % urls.length);
         try {
-          localStorage.setItem('calboard_cached_wallpapers', JSON.stringify(urls));
+          localStorage.setItem(`calboard_cached_${activeUserId}`, JSON.stringify(urls));
         } catch (e) {}
       } else {
-        const cached = localStorage.getItem('calboard_cached_wallpapers');
+        const cached = localStorage.getItem(`calboard_cached_${activeUserId}`);
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
@@ -369,7 +328,7 @@ export default function App() {
       unsubscribePhotos();
       unsubscribeSettings();
     };
-  }, [activeUserId]);
+  }, [token, activeUserId]);
 
   const triggerAlbumSyncToFirestore = async () => {
     const albumUrl = config.googlePhotosSharedLink || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
@@ -541,8 +500,15 @@ export default function App() {
       googlePhotosSharedLink: '',
     });
     setBackgrounds(DEFAULT_BACKGROUNDS);
-    setEvents(MOCK_EVENTS);
-    setTasks(MOCK_TASKS);
+    setFirestorePhotosCount(0);
+    setEvents([]);
+    setTasks([]);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('google_access_token');
+      localStorage.removeItem('google_user_email');
+      localStorage.removeItem('calboard_cached_wallpapers');
+      localStorage.removeItem(`calboard_cached_${activeUserId}`);
+    }
   };
 
   // Handle task check/uncheck
