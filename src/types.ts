@@ -9,6 +9,7 @@ export interface DashboardConfig {
   bgOverlayOpacity: number;
   photoFitMode: 'bestfit' | 'ambient' | 'cover';
   autoSyncIntervalHours: 0 | 12 | 24;
+  keepScreenAwake?: boolean;
 }
 
 export interface GoogleCalendarEvent {

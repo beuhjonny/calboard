@@ -42,6 +42,7 @@ import {
   subscribeUserSettingsFromFirestore 
 } from './utils/firebase';
 import { selectAndFormatDisplayPhotos } from './utils/photoScraper';
+import { enableScreenWakeLock, disableScreenWakeLock } from './utils/wakeLock';
 
 // Default mock configuration
 const DEFAULT_CONFIG: DashboardConfig = {
@@ -55,6 +56,7 @@ const DEFAULT_CONFIG: DashboardConfig = {
   bgOverlayOpacity: 50,
   photoFitMode: 'bestfit',
   autoSyncIntervalHours: 12,
+  keepScreenAwake: true,
 };
 
 // Curated stunning high-res photos for background if Google Photos isn't linked
@@ -254,38 +256,40 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Screen Wake Lock API to prevent Fire Tablet display from sleeping
+  // Triple-Tier Stay Awake Screen Lock (Fire Tablet / Kiosk Display Mode)
   useEffect(() => {
-    let wakeLock: any = null;
+    if (config.keepScreenAwake !== false) {
+      enableScreenWakeLock();
 
-    const requestWakeLock = async () => {
-      if ('wakeLock' in navigator) {
-        try {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
-          console.log('[WakeLock] Screen wake lock is active');
-        } catch (err) {
-          console.warn('[WakeLock] Screen wake lock failed:', err);
+      const handleUserGesture = () => {
+        enableScreenWakeLock();
+      };
+
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          enableScreenWakeLock();
         }
-      }
-    };
+      };
 
-    requestWakeLock();
+      // Periodic check every 15 seconds to re-lock display
+      const interval = setInterval(() => {
+        enableScreenWakeLock();
+      }, 15000);
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock();
-      }
-    };
+      window.addEventListener('touchstart', handleUserGesture, { passive: true });
+      window.addEventListener('click', handleUserGesture, { passive: true });
+      document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLock) {
-        wakeLock.release().catch(() => {});
-      }
-    };
-  }, []);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('touchstart', handleUserGesture);
+        window.removeEventListener('click', handleUserGesture);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    } else {
+      disableScreenWakeLock();
+    }
+  }, [config.keepScreenAwake]);
 
   // Save token changes and fetch user profile
   useEffect(() => {
@@ -1245,17 +1249,31 @@ export default function App() {
               </div>
             </div>
 
-            {/* Immersive Fullscreen Toggle */}
+            {/* Immersive Fullscreen & Stay Awake Toggle */}
             <div className="settings-group" style={{ marginTop: '0.85rem' }}>
-              <label className="settings-label">Screen Display</label>
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                className="settings-btn settings-btn-primary"
-                style={{ width: '100%', padding: '0.6rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-              >
-                <Maximize size={16} /> Enter Immersive Full Screen
-              </button>
+              <label className="settings-label">Screen Display & Stay Awake</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setConfig({ ...config, keepScreenAwake: config.keepScreenAwake === false ? true : false })}
+                  className={`settings-btn ${config.keepScreenAwake !== false ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                  style={{ width: '100%', padding: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  <Sun size={16} />
+                  {config.keepScreenAwake !== false ? '☀️ Screen Lock: ALWAYS AWAKE (Active)' : '🌙 Screen Lock: ALLOW SLEEP (Disabled)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  className="settings-btn settings-btn-secondary"
+                  style={{ width: '100%', padding: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  <Maximize size={16} /> Enter Immersive Full Screen
+                </button>
+              </div>
+              <p className="settings-subtext" style={{ fontSize: '0.72rem', marginTop: '0.35rem' }}>
+                Uses Native WakeLock API + Silent Video Engine to keep Fire Tablets awake 24/7.
+              </p>
             </div>
           </div>
 
