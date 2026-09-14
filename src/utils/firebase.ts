@@ -69,19 +69,26 @@ export function subscribeUserDisplayPhotos(
         const albumUrl: string = data.albumUrl || '';
 
         if (data && Array.isArray(data.photos) && data.photos.length > 0) {
-          const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => ({
-            id: p.id || `photo_${idx}`,
-            url: p.url || p,
-            updatedAt: p.updatedAt || data.updatedAt || Date.now(),
-          }));
+          const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => {
+            const raw = (p.url || p || '') as string;
+            const cleanBase = raw.split('=')[0];
+            return {
+              id: p.id || `photo_${idx}`,
+              url: `${cleanBase}=w1920-h1080-no`,
+              updatedAt: p.updatedAt || data.updatedAt || Date.now(),
+            };
+          });
           callback(photos, pool, albumUrl);
           return;
         } else if (data && Array.isArray(data.photoUrls) && data.photoUrls.length > 0) {
-          const photos: ScrapedPhoto[] = data.photoUrls.map((url: string, idx: number) => ({
-            id: `photo_${idx}`,
-            url: url,
-            updatedAt: data.updatedAt || Date.now(),
-          }));
+          const photos: ScrapedPhoto[] = data.photoUrls.map((url: string, idx: number) => {
+            const cleanBase = (url || '').split('=')[0];
+            return {
+              id: `photo_${idx}`,
+              url: `${cleanBase}=w1920-h1080-no`,
+              updatedAt: data.updatedAt || Date.now(),
+            };
+          });
           callback(photos, pool, albumUrl);
           return;
         }
@@ -93,14 +100,17 @@ export function subscribeUserDisplayPhotos(
         fallbackUnsubscribe = onSnapshot(fallbackDocRef, (fallbackSnap) => {
           if (fallbackSnap.exists()) {
             const data = fallbackSnap.data();
-            const pool: string[] = Array.isArray(data.pool) ? data.pool : [];
+            const pool: string[] = (Array.isArray(data.pool) ? data.pool : []).map((u: string) => u.split('=')[0]);
             const albumUrl: string = data.albumUrl || '';
             if (data && Array.isArray(data.photos) && data.photos.length > 0) {
-              const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => ({
-                id: p.id || `photo_${idx}`,
-                url: p.url || p,
-                updatedAt: p.updatedAt || data.updatedAt || Date.now(),
-              }));
+              const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => {
+                const cleanBase = ((p.url || p || '') as string).split('=')[0];
+                return {
+                  id: p.id || `photo_${idx}`,
+                  url: `${cleanBase}=w1920-h1080-no`,
+                  updatedAt: p.updatedAt || data.updatedAt || Date.now(),
+                };
+              });
               callback(photos, pool, albumUrl);
               return;
             }
@@ -113,6 +123,23 @@ export function subscribeUserDisplayPhotos(
       callback([]);
     }, (error) => {
       console.warn(`[Firestore] Single-doc wallpaper listener warning for ${userId}:`, error.message);
+      if (typeof localStorage !== 'undefined') {
+        const cached = localStorage.getItem(`calboard_cached_${userId}`) || localStorage.getItem('calboard_cached_user_user_google_account');
+        if (cached) {
+          try {
+            const urls = JSON.parse(cached);
+            if (Array.isArray(urls) && urls.length > 0) {
+              const cleaned = urls.map((u: string, idx: number) => ({
+                id: `cached_${idx}`,
+                url: `${u.split('=')[0]}=w1920-h1080-no`,
+                updatedAt: Date.now(),
+              }));
+              callback(cleaned);
+              return;
+            }
+          } catch (e) {}
+        }
+      }
       callback([]);
     });
 

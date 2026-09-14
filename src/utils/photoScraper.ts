@@ -54,9 +54,12 @@ export function selectAndFormatDisplayPhotos(rawUrls: string[], count: number = 
   const timestamp = Date.now();
 
   // Append target resolution format (=w1920-h1080-no) for bandwidth optimization & NO play button overlay
-  return selectedSlice.map((baseUrl, idx) => ({
-    id: `photo_${idx}_${timestamp}`,
-    url: `${baseUrl}=w1920-h1080-no`,
-    updatedAt: timestamp,
-  }));
+  return selectedSlice.map((rawUrl, idx) => {
+    const cleanBase = (rawUrl || '').split('=')[0];
+    return {
+      id: `photo_${idx}_${timestamp}`,
+      url: `${cleanBase}=w1920-h1080-no`,
+      updatedAt: timestamp,
+    };
+  });
 }

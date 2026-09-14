@@ -139,7 +139,7 @@ export default function App() {
 
   // Clean up PWA cache on new builds without polluting URL
   useEffect(() => {
-    const CURRENT_VERSION = 'v3.7.0-clean-settings';
+    const CURRENT_VERSION = 'v3.8.0-wallpaper-gallery';
     const lastVersion = localStorage.getItem('calboard_pwa_version');
     if (lastVersion !== CURRENT_VERSION) {
       localStorage.setItem('calboard_pwa_version', CURRENT_VERSION);
@@ -332,7 +332,10 @@ export default function App() {
         setWallpaperPool(pool);
       }
       if (photos && photos.length > 0) {
-        const urls = photos.map(p => p.url);
+        const urls = photos.map(p => {
+          const cleanBase = (p.url || '').split('=')[0];
+          return `${cleanBase}=w1920-h1080-no`;
+        });
         setBackgrounds(urls);
         setFirestorePhotosCount(urls.length);
         setBgIndex((prev) => prev % urls.length);
@@ -345,8 +348,9 @@ export default function App() {
           try {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setBackgrounds(parsed);
-              setFirestorePhotosCount(parsed.length);
+              const cleaned = parsed.map((u: string) => `${u.split('=')[0]}=w1920-h1080-no`);
+              setBackgrounds(cleaned);
+              setFirestorePhotosCount(cleaned.length);
               return;
             }
           } catch (e) {}
@@ -381,26 +385,57 @@ export default function App() {
       if (wallpaperPool.length > 0) {
         // Fast, zero-CORS local shuffle from 300+ album pool stored in Firestore
         const displayPhotos = selectAndFormatDisplayPhotos(wallpaperPool, 24);
-        await saveUserDisplayPhotosBatch(activeUserId, displayPhotos, config.googlePhotosSharedLink, wallpaperPool);
-        setSyncStatusMessage('✓ Rotated 24 fresh photos from album!');
+        const urls = displayPhotos.map(p => p.url);
+        setBackgrounds(urls);
+        setFirestorePhotosCount(urls.length);
+        setBgIndex(0);
+        try {
+          localStorage.setItem(`calboard_cached_${activeUserId}`, JSON.stringify(urls));
+        } catch (e) {}
+
+        try {
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
+          await Promise.race([
+            saveUserDisplayPhotosBatch(activeUserId, displayPhotos, config.googlePhotosSharedLink, wallpaperPool),
+            timeoutPromise
+          ]);
+          setSyncStatusMessage('✓ Rotated 24 fresh photos from album!');
+        } catch (e) {
+          setSyncStatusMessage('✓ Rotated 24 fresh photos locally!');
+        }
       } else {
         const albumUrl = config.googlePhotosSharedLink || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
         const urls = await fetchSharedAlbumPhotos(albumUrl);
         if (urls.length > 0) {
           const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
-          await saveUserDisplayPhotosBatch(activeUserId, displayPhotos, albumUrl, urls);
+          const photoUrls = displayPhotos.map(p => p.url);
+          setBackgrounds(photoUrls);
+          setFirestorePhotosCount(photoUrls.length);
           setWallpaperPool(urls);
-          setSyncStatusMessage(`✓ Synced ${urls.length} photos!`);
+          setBgIndex(0);
+          try {
+            localStorage.setItem(`calboard_cached_${activeUserId}`, JSON.stringify(photoUrls));
+          } catch (e) {}
+          try {
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
+            await Promise.race([
+              saveUserDisplayPhotosBatch(activeUserId, displayPhotos, albumUrl, urls),
+              timeoutPromise
+            ]);
+            setSyncStatusMessage(`✓ Synced ${urls.length} photos!`);
+          } catch (e) {
+            setSyncStatusMessage(`✓ Loaded ${photoUrls.length} photos locally!`);
+          }
         } else {
-          setSyncStatusMessage('Automated cloud sync runs twice daily. Album link saved.');
+          setSyncStatusMessage('Active album pool ready. Cloud sync runs twice daily.');
         }
       }
     } catch (err: any) {
       console.error('Error syncing photos to Firestore:', err);
-      setSyncStatusMessage('Sync error. Automated cloud sync runs twice daily.');
+      setSyncStatusMessage('Active wallpapers rotating.');
     } finally {
       setIsSyncingPhotos(false);
-      setTimeout(() => setSyncStatusMessage(''), 4000);
+      setTimeout(() => setSyncStatusMessage(''), 5000);
     }
   };
 
@@ -814,12 +849,41 @@ export default function App() {
     >
       {/* Dynamic Ken Burns background photos with Smart Ambient backdrop option */}
       <div className={`bg-container fit-${config.photoFitMode || 'ambient'}`}>
-        {backgrounds.map((bgUrl, index) => (
-          <div key={bgUrl} className={`bg-slide ${index === bgIndex ? 'active' : ''}`}>
-            <img src={bgUrl} alt="" className="bg-image-blur" />
-            <img src={bgUrl} alt="background wallpaper" className="bg-image-main" />
-          </div>
-        ))}
+        {(backgrounds.length > 0 ? backgrounds : DEFAULT_BACKGROUNDS).map((bgUrl, index) => {
+          const cleanUrl = bgUrl.includes('=') ? `${bgUrl.split('=')[0]}=w1920-h1080-no` : bgUrl;
+          return (
+            <div key={`slide-${cleanUrl}-${index}`} className={`bg-slide ${index === bgIndex ? 'active' : ''}`}>
+              <img 
+                src={cleanUrl} 
+                alt="" 
+                className="bg-image-blur"
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                loading={index === bgIndex ? 'eager' : 'lazy'}
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('unsplash')) {
+                    target.src = DEFAULT_BACKGROUNDS[index % DEFAULT_BACKGROUNDS.length];
+                  }
+                }}
+              />
+              <img 
+                src={cleanUrl} 
+                alt="background wallpaper" 
+                className="bg-image-main" 
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                loading={index === bgIndex ? 'eager' : 'lazy'}
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes('unsplash')) {
+                    target.src = DEFAULT_BACKGROUNDS[index % DEFAULT_BACKGROUNDS.length];
+                  }
+                }}
+              />
+            </div>
+          );
+        })}
         <div className="bg-overlay"></div>
       </div>
 
@@ -1390,6 +1454,68 @@ export default function App() {
                 {isSyncingPhotos ? 'Rotating Photos...' : 'Shuffle 24 Fresh Wallpapers'}
               </button>
             </div>
+
+            {/* Active Wallpaper Preview Gallery & Controls */}
+            {backgrounds.length > 0 && (
+              <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label className="settings-label" style={{ fontSize: '0.78rem' }}>
+                    Active Wallpapers ({bgIndex + 1} of {backgrounds.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setBgIndex((prev) => (prev + 1) % backgrounds.length)}
+                    className="settings-btn settings-btn-secondary"
+                    style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.7rem' }}
+                    title="Skip to next wallpaper"
+                  >
+                    Next Photo ⏭️
+                  </button>
+                </div>
+
+                <div className="wallpaper-gallery-strip">
+                  {backgrounds.map((url, idx) => {
+                    const cleanThumbUrl = url.includes('=') ? `${url.split('=')[0]}=w200-h150-c` : url;
+                    return (
+                      <div
+                        key={`thumb-${url}-${idx}`}
+                        className={`wallpaper-thumb-card ${idx === bgIndex ? 'active' : ''}`}
+                        onClick={() => setBgIndex(idx)}
+                        title={`Photo #${idx + 1} (Click to set live)`}
+                      >
+                        <img
+                          src={cleanThumbUrl}
+                          alt={`thumb ${idx + 1}`}
+                          className="wallpaper-thumb-img"
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.src = DEFAULT_BACKGROUNDS[idx % DEFAULT_BACKGROUNDS.length];
+                          }}
+                        />
+                        <span className="wallpaper-thumb-badge">#{idx + 1}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
+                  <span className="settings-subtext" style={{ fontSize: '0.7rem' }}>
+                    Tap any photo to set it live immediately.
+                  </span>
+                  {backgrounds[bgIndex] && (
+                    <a
+                      href={backgrounds[bgIndex]}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ fontSize: '0.7rem', color: 'var(--color-accent-blue)', textDecoration: 'none' }}
+                    >
+                      Open Full Res ↗
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Photo Rotation Interval */}
             <div className="settings-group" style={{ marginTop: '0.85rem' }}>

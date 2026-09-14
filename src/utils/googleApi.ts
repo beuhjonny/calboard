@@ -241,8 +241,7 @@ export async function fetchSharedAlbumPhotos(albumUrl: string): Promise<string[]
       if (matches.length > 0) {
         const cleanUrls = matches.map((url: string) => url.split('=')[0]);
         const uniqueUrls: string[] = Array.from(new Set(cleanUrls));
-        // Use =w1920-no suffix to instruct Google Photos CDN to serve clean photos/posters without play button overlays
-        return uniqueUrls.map((url: string) => `${url}=w1920-no`);
+        return uniqueUrls;
       }
     } catch (err) {
       console.warn(`[PhotosScraper] Proxy ${i + 1} skipped:`, err);
