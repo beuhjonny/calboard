@@ -5,8 +5,9 @@ import {
   setDoc, 
   onSnapshot 
 } from 'firebase/firestore';
-import type { ScrapedPhoto } from './photoScraper';
+import { selectAndFormatDisplayPhotos, type ScrapedPhoto } from './photoScraper';
 import type { DashboardConfig } from '../types';
+import defaultPhotoPool from '../data/defaultPhotoPool.json';
 
 // Firebase configuration for Project beuhcalboard
 const firebaseConfig = {
@@ -65,8 +66,9 @@ export function subscribeUserDisplayPhotos(
     const mainUnsubscribe = onSnapshot(activeDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const pool: string[] = Array.isArray(data.pool) ? data.pool : [];
-        const albumUrl: string = data.albumUrl || '';
+        const rawPool = Array.isArray(data.pool) && data.pool.length > 0 ? data.pool : (defaultPhotoPool as string[]);
+        const pool: string[] = rawPool.map((u: string) => (u || '').split('=')[0]);
+        const albumUrl: string = data.albumUrl || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
 
         if (data && Array.isArray(data.photos) && data.photos.length > 0) {
           const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => {
@@ -91,6 +93,10 @@ export function subscribeUserDisplayPhotos(
           });
           callback(photos, pool, albumUrl);
           return;
+        } else if (pool.length > 0) {
+          const photos = selectAndFormatDisplayPhotos(pool, 24);
+          callback(photos, pool, albumUrl);
+          return;
         }
       }
 
@@ -100,8 +106,9 @@ export function subscribeUserDisplayPhotos(
         fallbackUnsubscribe = onSnapshot(fallbackDocRef, (fallbackSnap) => {
           if (fallbackSnap.exists()) {
             const data = fallbackSnap.data();
-            const pool: string[] = (Array.isArray(data.pool) ? data.pool : []).map((u: string) => u.split('=')[0]);
-            const albumUrl: string = data.albumUrl || '';
+            const rawPool = Array.isArray(data.pool) && data.pool.length > 0 ? data.pool : (defaultPhotoPool as string[]);
+            const pool: string[] = rawPool.map((u: string) => (u || '').split('=')[0]);
+            const albumUrl: string = data.albumUrl || 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6';
             if (data && Array.isArray(data.photos) && data.photos.length > 0) {
               const photos: ScrapedPhoto[] = data.photos.map((p: any, idx: number) => {
                 const cleanBase = ((p.url || p || '') as string).split('=')[0];
@@ -113,14 +120,20 @@ export function subscribeUserDisplayPhotos(
               });
               callback(photos, pool, albumUrl);
               return;
+            } else if (pool.length > 0) {
+              const photos = selectAndFormatDisplayPhotos(pool, 24);
+              callback(photos, pool, albumUrl);
+              return;
             }
           }
-          callback([]);
+          const photos = selectAndFormatDisplayPhotos(defaultPhotoPool as string[], 24);
+          callback(photos, defaultPhotoPool as string[], 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6');
         });
         return;
       }
 
-      callback([]);
+      const photos = selectAndFormatDisplayPhotos(defaultPhotoPool as string[], 24);
+      callback(photos, defaultPhotoPool as string[], 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6');
     }, (error) => {
       console.warn(`[Firestore] Single-doc wallpaper listener warning for ${userId}:`, error.message);
       if (typeof localStorage !== 'undefined') {
@@ -134,13 +147,14 @@ export function subscribeUserDisplayPhotos(
                 url: `${u.split('=')[0]}=w1920-h1080-no`,
                 updatedAt: Date.now(),
               }));
-              callback(cleaned);
+              callback(cleaned, defaultPhotoPool as string[], 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6');
               return;
             }
           } catch (e) {}
         }
       }
-      callback([]);
+      const photos = selectAndFormatDisplayPhotos(defaultPhotoPool as string[], 24);
+      callback(photos, defaultPhotoPool as string[], 'https://photos.app.goo.gl/rPu6ZCJtajQt4kYu6');
     });
 
     return () => {
