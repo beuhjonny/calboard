@@ -25,9 +25,11 @@
         });
       }
       (function() {
-        var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-        if (isStandalone && !window.location.search.includes('pwa_live=3.9.1')) {
-          window.location.replace('https://beuhcalboard.web.app/?pwa_live=3.9.1');
+        var CURRENT_BUILD = '3.9.3';
+        var urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('b') !== CURRENT_BUILD) {
+          urlParams.set('b', CURRENT_BUILD);
+          window.location.replace(window.location.pathname + '?' + urlParams.toString());
         }
       })();
     </script>

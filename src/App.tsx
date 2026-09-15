@@ -148,7 +148,7 @@ export default function App() {
 
   // Clean up PWA cache on new builds without polluting URL
   useEffect(() => {
-    const CURRENT_VERSION = 'v3.9.1-photo-pool-fix';
+    const CURRENT_VERSION = 'v3.9.3-live-photos-fix';
     const lastVersion = localStorage.getItem('calboard_pwa_version');
     if (lastVersion !== CURRENT_VERSION) {
       localStorage.setItem('calboard_pwa_version', CURRENT_VERSION);
@@ -1030,7 +1030,8 @@ export default function App() {
       {/* Dynamic Ken Burns background photos with Smart Ambient backdrop option */}
       <div className={`bg-container fit-${config.photoFitMode || 'ambient'}`}>
         {(backgrounds.length > 0 ? backgrounds : DEFAULT_BACKGROUNDS).map((bgUrl, index) => {
-          const cleanUrl = bgUrl.includes('=') ? `${bgUrl.split('=')[0]}=w1920-h1080-no` : bgUrl;
+          const isGoogle = bgUrl.includes('googleusercontent.com');
+          const cleanUrl = isGoogle ? `${bgUrl.split('=')[0]}=w1920-h1080-no` : bgUrl;
           return (
             <div key={`slide-${cleanUrl}-${index}`} className={`bg-slide ${index === bgIndex ? 'active' : ''}`}>
               <img 
@@ -1038,13 +1039,9 @@ export default function App() {
                 alt="" 
                 className="bg-image-blur"
                 referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
                 loading={index === bgIndex ? 'eager' : 'lazy'}
                 onError={(e) => {
-                  const target = e.currentTarget;
-                  if (!target.src.includes('unsplash')) {
-                    target.src = DEFAULT_BACKGROUNDS[index % DEFAULT_BACKGROUNDS.length];
-                  }
+                  console.warn('[Wallpaper] Blur image failed to load:', e.currentTarget.src);
                 }}
               />
               <img 
@@ -1052,13 +1049,9 @@ export default function App() {
                 alt="background wallpaper" 
                 className="bg-image-main" 
                 referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
                 loading={index === bgIndex ? 'eager' : 'lazy'}
                 onError={(e) => {
-                  const target = e.currentTarget;
-                  if (!target.src.includes('unsplash')) {
-                    target.src = DEFAULT_BACKGROUNDS[index % DEFAULT_BACKGROUNDS.length];
-                  }
+                  console.warn('[Wallpaper] Main image failed to load:', e.currentTarget.src);
                 }}
               />
             </div>
@@ -1748,7 +1741,8 @@ export default function App() {
 
                 <div className="wallpaper-gallery-strip">
                   {backgrounds.map((url, idx) => {
-                    const cleanThumbUrl = url.includes('=') ? `${url.split('=')[0]}=w200-h150-c` : url;
+                    const isGoogle = url.includes('googleusercontent.com');
+                    const cleanThumbUrl = isGoogle ? `${url.split('=')[0]}=w200-h150-c` : url;
                     return (
                       <div
                         key={`thumb-${url}-${idx}`}
@@ -1761,10 +1755,9 @@ export default function App() {
                           alt={`thumb ${idx + 1}`}
                           className="wallpaper-thumb-img"
                           referrerPolicy="no-referrer"
-                          crossOrigin="anonymous"
                           loading="lazy"
                           onError={(e) => {
-                            e.currentTarget.src = DEFAULT_BACKGROUNDS[idx % DEFAULT_BACKGROUNDS.length];
+                            console.warn('[Thumbnail] Failed to load thumb:', e.currentTarget.src);
                           }}
                         />
                         <span className="wallpaper-thumb-badge">#{idx + 1}</span>

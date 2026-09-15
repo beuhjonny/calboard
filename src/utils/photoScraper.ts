@@ -16,8 +16,8 @@ export interface ScrapedPhoto {
 export function extractRawPhotoUrls(htmlContent: string): string[] {
   if (!htmlContent) return [];
 
-  // Deep regex matching lh3 image URLs across WIZ_global_data, AF_initDataCallback, and DOM img tags
-  const regex = /https:\/\/lh[3-6]\.googleusercontent\.com\/(?:pw|lr|[a-zA-Z0-9\-_]+)\/[a-zA-Z0-9\-_]{40,}/g;
+  // Deep regex matching genuine Google Photos image URLs (pw and lr)
+  const regex = /https:\/\/lh[3-6]\.googleusercontent\.com\/(?:pw|lr)\/[a-zA-Z0-9\-_]{40,}/g;
   const matches = htmlContent.match(regex) || [];
 
   // Strip parameters (anything after =) to get clean base image URLs
