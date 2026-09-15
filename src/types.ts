@@ -10,6 +10,7 @@ export interface DashboardConfig {
   photoFitMode: 'bestfit' | 'ambient' | 'cover';
   autoSyncIntervalHours: 0 | 12 | 24;
   keepScreenAwake?: boolean;
+  bgSourceMode?: 'nature' | 'google_photos';
 }
 
 export interface GoogleCalendarEvent {

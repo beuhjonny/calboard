@@ -16,6 +16,10 @@ import {
   Check, 
   X, 
   FolderHeart,
+  Trees,
+  Link2,
+  CheckCircle2,
+  AlertCircle,
   Info,
   Maximize,
   RefreshCw
@@ -57,6 +61,7 @@ const DEFAULT_CONFIG: DashboardConfig = {
   photoFitMode: 'bestfit',
   autoSyncIntervalHours: 12,
   keepScreenAwake: true,
+  bgSourceMode: 'nature',
 };
 
 // Curated stunning high-res photos for background if Google Photos isn't linked
@@ -124,6 +129,9 @@ export default function App() {
       if (!parsed.googlePhotosSharedLink) {
         parsed.googlePhotosSharedLink = DEFAULT_CONFIG.googlePhotosSharedLink;
       }
+      if (!parsed.bgSourceMode) {
+        parsed.bgSourceMode = parsed.googlePhotosSharedLink ? 'google_photos' : 'nature';
+      }
       localStorage.setItem('calboard_config', JSON.stringify(parsed));
       return parsed;
     }
@@ -139,7 +147,7 @@ export default function App() {
 
   // Clean up PWA cache on new builds without polluting URL
   useEffect(() => {
-    const CURRENT_VERSION = 'v3.8.0-wallpaper-gallery';
+    const CURRENT_VERSION = 'v3.9.0-bg-photos-rebuild';
     const lastVersion = localStorage.getItem('calboard_pwa_version');
     if (lastVersion !== CURRENT_VERSION) {
       localStorage.setItem('calboard_pwa_version', CURRENT_VERSION);
@@ -207,6 +215,7 @@ export default function App() {
       'photoFitMode',
       'autoSyncIntervalHours',
       'keepScreenAwake',
+      'bgSourceMode',
     ];
     return keys.every((key) => {
       if (b[key] === undefined) return true;
@@ -311,23 +320,73 @@ export default function App() {
     return () => clearInterval(interval);
   }, [config.weatherLocation]);
 
+  // User's active Google Photos wallpapers (cached / from Firestore)
+  const [userWallpapers, setUserWallpapers] = useState<string[]>(() => {
+    try {
+      const activeId = getActiveUserId(localStorage.getItem('google_user_email') || undefined);
+      const cached = localStorage.getItem(`calboard_cached_${activeId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((u: string) => `${(u || '').split('=')[0]}=w1920-h1080-no`);
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+
   // Real-time listener for user-scoped Firestore photos & settings
   const [firestorePhotosCount, setFirestorePhotosCount] = useState<number>(0);
   const [wallpaperPool, setWallpaperPool] = useState<string[]>([]);
   const [isSyncingPhotos, setIsSyncingPhotos] = useState<boolean>(false);
   const [syncStatusMessage, setSyncStatusMessage] = useState<string>('');
 
+  // Background photos connection & editing UI state
+  const [albumInput, setAlbumInput] = useState<string>(config.googlePhotosSharedLink || '');
+  const [isEditingAlbumLink, setIsEditingAlbumLink] = useState<boolean>(false);
+  const [isConnectingAlbum, setIsConnectingAlbum] = useState<boolean>(false);
+  const [albumError, setAlbumError] = useState<string>('');
+  const [albumSuccessMessage, setAlbumSuccessMessage] = useState<string>('');
+
+  // Sync albumInput when config.googlePhotosSharedLink changes externally (e.g. from cloud sync)
+  useEffect(() => {
+    if (!isEditingAlbumLink) {
+      setAlbumInput(config.googlePhotosSharedLink || '');
+    }
+  }, [config.googlePhotosSharedLink, isEditingAlbumLink]);
+
+  // Determine effective background source mode (forced to nature when logged out)
+  const effectiveBgMode: 'nature' | 'google_photos' = !token
+    ? 'nature'
+    : (config.bgSourceMode || (config.googlePhotosSharedLink && userWallpapers.length > 0 ? 'google_photos' : 'nature'));
+
+  // Synchronize backgrounds array to active mode
+  useEffect(() => {
+    if (!token || effectiveBgMode === 'nature') {
+      setBackgrounds(DEFAULT_BACKGROUNDS);
+      setBgIndex((prev) => (prev >= DEFAULT_BACKGROUNDS.length ? 0 : prev));
+    } else {
+      if (userWallpapers.length > 0) {
+        setBackgrounds(userWallpapers);
+        setBgIndex((prev) => (prev >= userWallpapers.length ? 0 : prev));
+      } else {
+        setBackgrounds(DEFAULT_BACKGROUNDS);
+        setBgIndex((prev) => (prev >= DEFAULT_BACKGROUNDS.length ? 0 : prev));
+      }
+    }
+  }, [effectiveBgMode, userWallpapers, token]);
+
   useEffect(() => {
     // CRITICAL PRIVACY & SECURITY GUARD:
-    // When user is NOT logged in, strictly display public nature wallpapers!
+    // When user is NOT logged in, strictly clear private user wallpapers
     if (!token) {
-      setBackgrounds(DEFAULT_BACKGROUNDS);
+      setUserWallpapers([]);
       setFirestorePhotosCount(0);
       setWallpaperPool([]);
       return;
     }
 
-    const unsubscribePhotos = subscribeUserDisplayPhotos(activeUserId, (photos, pool) => {
+    const unsubscribePhotos = subscribeUserDisplayPhotos(activeUserId, (photos, pool, albumUrl) => {
       if (pool && pool.length > 0) {
         setWallpaperPool(pool);
       }
@@ -336,9 +395,8 @@ export default function App() {
           const cleanBase = (p.url || '').split('=')[0];
           return `${cleanBase}=w1920-h1080-no`;
         });
-        setBackgrounds(urls);
+        setUserWallpapers(urls);
         setFirestorePhotosCount(urls.length);
-        setBgIndex((prev) => prev % urls.length);
         try {
           localStorage.setItem(`calboard_cached_${activeUserId}`, JSON.stringify(urls));
         } catch (e) {}
@@ -349,14 +407,18 @@ export default function App() {
             const parsed = JSON.parse(cached);
             if (Array.isArray(parsed) && parsed.length > 0) {
               const cleaned = parsed.map((u: string) => `${u.split('=')[0]}=w1920-h1080-no`);
-              setBackgrounds(cleaned);
+              setUserWallpapers(cleaned);
               setFirestorePhotosCount(cleaned.length);
               return;
             }
           } catch (e) {}
         }
-        setBackgrounds(DEFAULT_BACKGROUNDS);
+        setUserWallpapers([]);
         setFirestorePhotosCount(0);
+      }
+
+      if (albumUrl && !config.googlePhotosSharedLink) {
+        setConfig((prev) => ({ ...prev, googlePhotosSharedLink: albumUrl }));
       }
     });
 
@@ -378,15 +440,117 @@ export default function App() {
     };
   }, [token, activeUserId]);
 
+  // Mode selection handler
+  const handleSelectBgMode = (mode: 'nature' | 'google_photos') => {
+    setConfig((prev) => ({ ...prev, bgSourceMode: mode }));
+    setAlbumError('');
+    setAlbumSuccessMessage('');
+    setBgIndex(0);
+    if (mode === 'google_photos' && !config.googlePhotosSharedLink) {
+      setIsEditingAlbumLink(true);
+    }
+  };
+
+  // Connect Google Photos Album (Supports Enter key and Connect button)
+  const handleConnectAlbum = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanUrl = (albumInput || '').trim();
+    if (!cleanUrl) {
+      setAlbumError('Please enter a Google Photos shared album link.');
+      return;
+    }
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      setAlbumError('Link must start with https://');
+      return;
+    }
+    if (!cleanUrl.includes('google.com') && !cleanUrl.includes('goo.gl')) {
+      setAlbumError('Please enter a valid Google Photos album link (e.g., photos.app.goo.gl/... or photos.google.com/share/...)');
+      return;
+    }
+
+    setAlbumError('');
+    setAlbumSuccessMessage('');
+    setIsConnectingAlbum(true);
+
+    try {
+      // 1. Instant local reuse if same link and pool already in memory
+      if (cleanUrl === config.googlePhotosSharedLink && wallpaperPool.length > 0) {
+        const displayPhotos = selectAndFormatDisplayPhotos(wallpaperPool, 24);
+        const urls = displayPhotos.map(p => p.url);
+        setUserWallpapers(urls);
+        setFirestorePhotosCount(urls.length);
+        setBgIndex(0);
+        setConfig(prev => ({ ...prev, googlePhotosSharedLink: cleanUrl, bgSourceMode: 'google_photos' }));
+        setIsEditingAlbumLink(false);
+        setAlbumSuccessMessage(`✓ Connected! 24 active wallpapers loaded from ${wallpaperPool.length}-photo pool.`);
+        try {
+          localStorage.setItem(`calboard_cached_${activeUserId}`, JSON.stringify(urls));
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
+          Promise.race([
+            saveUserDisplayPhotosBatch(activeUserId, displayPhotos, cleanUrl, wallpaperPool),
+            timeoutPromise
+          ]).catch(() => {});
+        } catch (e) {}
+        return;
+      }
+
+      // 2. Fetch fresh album photos via proxy
+      const urls = await fetchSharedAlbumPhotos(cleanUrl);
+      if (urls.length > 0) {
+        const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
+        const photoUrls = displayPhotos.map(p => p.url);
+        setUserWallpapers(photoUrls);
+        setWallpaperPool(urls);
+        setFirestorePhotosCount(photoUrls.length);
+        setBgIndex(0);
+        setConfig(prev => ({ ...prev, googlePhotosSharedLink: cleanUrl, bgSourceMode: 'google_photos' }));
+        setIsEditingAlbumLink(false);
+        setAlbumSuccessMessage(`✓ Connected! Found ${urls.length} photos in album.`);
+        try {
+          localStorage.setItem(`calboard_cached_${activeUserId}`, JSON.stringify(photoUrls));
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500));
+          Promise.race([
+            saveUserDisplayPhotosBatch(activeUserId, displayPhotos, cleanUrl, urls),
+            timeoutPromise
+          ]).catch(() => {});
+        } catch (e) {}
+      } else {
+        // Fallback: If scraper hit client-side proxy rate limit but we have pool or cached wallpapers
+        if (wallpaperPool.length > 0) {
+          const displayPhotos = selectAndFormatDisplayPhotos(wallpaperPool, 24);
+          const photoUrls = displayPhotos.map(p => p.url);
+          setUserWallpapers(photoUrls);
+          setFirestorePhotosCount(photoUrls.length);
+          setBgIndex(0);
+          setConfig(prev => ({ ...prev, googlePhotosSharedLink: cleanUrl, bgSourceMode: 'google_photos' }));
+          setIsEditingAlbumLink(false);
+          setAlbumSuccessMessage('✓ Connected! Using current album pool.');
+        } else if (userWallpapers.length > 0) {
+          setConfig(prev => ({ ...prev, googlePhotosSharedLink: cleanUrl, bgSourceMode: 'google_photos' }));
+          setIsEditingAlbumLink(false);
+          setAlbumSuccessMessage('✓ Connected! Using cached album wallpapers.');
+        } else {
+          setAlbumError('Could not reach photos at this link. Please ensure "Link Sharing" is turned ON in Google Photos.');
+        }
+      }
+    } catch (err: any) {
+      console.error('Error connecting album:', err);
+      setAlbumError('Failed to load album. Please verify your link and internet connection.');
+    } finally {
+      setIsConnectingAlbum(false);
+    }
+  };
+
+  // Quick Shuffle 24 Wallpapers from Pool
   const triggerAlbumSyncToFirestore = async () => {
     setIsSyncingPhotos(true);
     setSyncStatusMessage('');
     try {
       if (wallpaperPool.length > 0) {
-        // Fast, zero-CORS local shuffle from 300+ album pool stored in Firestore
+        // Fast, zero-CORS local shuffle from album pool
         const displayPhotos = selectAndFormatDisplayPhotos(wallpaperPool, 24);
         const urls = displayPhotos.map(p => p.url);
-        setBackgrounds(urls);
+        setUserWallpapers(urls);
         setFirestorePhotosCount(urls.length);
         setBgIndex(0);
         try {
@@ -409,7 +573,7 @@ export default function App() {
         if (urls.length > 0) {
           const displayPhotos = selectAndFormatDisplayPhotos(urls, 24);
           const photoUrls = displayPhotos.map(p => p.url);
-          setBackgrounds(photoUrls);
+          setUserWallpapers(photoUrls);
           setFirestorePhotosCount(photoUrls.length);
           setWallpaperPool(urls);
           setBgIndex(0);
@@ -439,21 +603,23 @@ export default function App() {
     }
   };
 
+  // Disconnect Album handler
   const handleRemoveSharedLibrary = async () => {
-    setConfig((prev) => ({ ...prev, googlePhotosSharedLink: '' }));
-    setIsSyncingPhotos(true);
+    setConfig((prev) => ({ ...prev, googlePhotosSharedLink: '', bgSourceMode: 'nature' }));
+    setAlbumInput('');
+    setIsEditingAlbumLink(false);
+    setUserWallpapers([]);
+    setFirestorePhotosCount(0);
+    setWallpaperPool([]);
+    setBgIndex(0);
+    setAlbumSuccessMessage('Album disconnected. Defaulting to Curated Nature.');
     try {
+      localStorage.removeItem(`calboard_cached_${activeUserId}`);
       await saveUserDisplayPhotosBatch(activeUserId, [], '');
-      setBackgrounds(DEFAULT_BACKGROUNDS);
-      setFirestorePhotosCount(0);
-      setWallpaperPool([]);
-      setSyncStatusMessage('Album removed. Displaying default nature wallpapers.');
     } catch (err) {
       console.error('Error clearing shared library:', err);
-    } finally {
-      setIsSyncingPhotos(false);
-      setTimeout(() => setSyncStatusMessage(''), 4000);
     }
+    setTimeout(() => setAlbumSuccessMessage(''), 4000);
   };
 
   // Scheduled Background Auto-Sync Timer (12h or 24h)
@@ -1373,87 +1539,180 @@ export default function App() {
             </div>
           </div>
 
-          {/* GOOGLE PHOTOS ALBUM WALLPAPERS */}
+          {/* BACKGROUND WALLPAPERS (NATURE & GOOGLE PHOTOS) */}
           <div className="settings-section">
-            <h3 className="settings-section-title">Google Photos Wallpapers</h3>
+            <h3 className="settings-section-title">Background Wallpapers</h3>
 
-            {/* Public shared album link */}
-            <div className="settings-group">
-              <label className="settings-label">Album Share Link</label>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <input
-                  type="text"
-                  value={config.googlePhotosSharedLink}
-                  onChange={(e) => setConfig({ ...config, googlePhotosSharedLink: e.target.value })}
-                  placeholder="https://photos.app.goo.gl/..."
-                  className="settings-input"
-                  style={{ flex: 1 }}
-                />
-                {config.googlePhotosSharedLink && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveSharedLibrary}
-                    className="settings-btn settings-btn-danger"
-                    style={{ width: 'auto', padding: '0 0.85rem' }}
-                    title="Remove album link and revert to default wallpapers"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                )}
-              </div>
-              <p className="settings-subtext">
-                Paste the public share link from your Google Photos album.
-              </p>
-            </div>
-
-            {/* Unified Status & Quick Shuffle Action */}
-            <div style={{
-              padding: '0.85rem 1rem',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.06)',
-              borderRadius: '10px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.65rem',
-              marginTop: '0.25rem'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <FolderHeart size={16} style={{ color: firestorePhotosCount > 0 ? 'var(--color-accent-emerald)' : 'var(--color-accent-amber)' }} />
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'white' }}>
-                    {firestorePhotosCount > 0 
-                      ? `${firestorePhotosCount} Wallpapers Active` 
-                      : 'Default Nature Wallpapers'}
-                  </span>
-                </div>
-                {wallpaperPool.length > 0 && (
-                  <span style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
-                    {wallpaperPool.length} in album pool
-                  </span>
-                )}
-              </div>
-
-              {syncStatusMessage ? (
-                <p style={{ fontSize: '0.75rem', color: '#60a5fa', margin: 0, fontWeight: 500 }}>
-                  {syncStatusMessage}
-                </p>
-              ) : (
-                <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', margin: 0 }}>
-                  Automatically rotates on schedule. Click below to shuffle fresh wallpapers now.
-                </p>
-              )}
-
+            {/* Segmented Mode Switcher */}
+            <div className="bg-mode-tabs" style={{ marginBottom: '0.85rem' }}>
               <button
                 type="button"
-                onClick={triggerAlbumSyncToFirestore}
-                disabled={isSyncingPhotos}
-                className="settings-btn settings-btn-primary"
-                style={{ padding: '0.55rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                onClick={() => handleSelectBgMode('nature')}
+                className={`bg-mode-tab ${effectiveBgMode === 'nature' ? 'active' : ''}`}
               >
-                <RefreshCw size={14} className={isSyncingPhotos ? 'animate-spin' : ''} />
-                {isSyncingPhotos ? 'Rotating Photos...' : 'Shuffle 24 Fresh Wallpapers'}
+                <Trees size={15} /> Curated Nature
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectBgMode('google_photos')}
+                className={`bg-mode-tab ${effectiveBgMode === 'google_photos' ? 'active' : ''}`}
+              >
+                <FolderHeart size={15} /> Google Photos Album
               </button>
             </div>
+
+            {/* Mode Content: 🌿 Curated Nature */}
+            {effectiveBgMode === 'nature' && (
+              <div className="bg-status-card nature" style={{ marginBottom: '0.85rem' }}>
+                <div className="bg-status-header">
+                  <div className="bg-status-badge" style={{ color: 'var(--color-accent-blue)' }}>
+                    <Trees size={16} /> Curated Nature Wallpapers Active
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                    {DEFAULT_BACKGROUNDS.length} HD Photos
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: 'var(--color-text-muted)', margin: 0 }}>
+                  High-definition landscape photos hand-picked for crisp ambient display.
+                </p>
+              </div>
+            )}
+
+            {/* Mode Content: 📷 Google Photos Album */}
+            {effectiveBgMode === 'google_photos' && (
+              <>
+                {!token ? (
+                  <div className="bg-status-card" style={{ marginBottom: '0.85rem', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
+                    <div className="bg-status-badge" style={{ color: '#facc15' }}>
+                      <AlertCircle size={16} /> Sign-In Required
+                    </div>
+                    <p style={{ fontSize: '0.74rem', color: 'var(--color-text-secondary)', margin: '0.25rem 0 0' }}>
+                      Please sign in with your Google account above to sync and display your private Google Photos albums.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Connected Status Card when album is set and not actively changing link */}
+                    {config.googlePhotosSharedLink && !isEditingAlbumLink ? (
+                      <div className="bg-status-card connected" style={{ marginBottom: '0.85rem' }}>
+                        <div className="bg-status-header">
+                          <div className="bg-status-badge" style={{ color: 'var(--color-accent-emerald)' }}>
+                            <CheckCircle2 size={16} /> Connected to Album
+                          </div>
+                          {wallpaperPool.length > 0 && (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-secondary)' }}>
+                              {wallpaperPool.length} photos in pool
+                            </span>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.2rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'white', fontWeight: 500 }}>
+                            {firestorePhotosCount > 0 
+                              ? `${firestorePhotosCount} wallpapers in active rotation` 
+                              : 'Active rotation loaded'}
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => { setIsEditingAlbumLink(true); setAlbumInput(config.googlePhotosSharedLink); }}
+                              className="settings-btn settings-btn-secondary"
+                              style={{ width: 'auto', padding: '0.25rem 0.6rem', fontSize: '0.72rem' }}
+                            >
+                              Change Link
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleRemoveSharedLibrary}
+                              className="settings-btn settings-btn-danger"
+                              style={{ width: 'auto', padding: '0.25rem 0.5rem', fontSize: '0.72rem' }}
+                              title="Disconnect Album and Revert to Nature"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {syncStatusMessage && (
+                          <p style={{ fontSize: '0.74rem', color: '#60a5fa', margin: '0.2rem 0 0', fontWeight: 500 }}>
+                            {syncStatusMessage}
+                          </p>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={triggerAlbumSyncToFirestore}
+                          disabled={isSyncingPhotos}
+                          className="settings-btn settings-btn-primary"
+                          style={{ padding: '0.55rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.35rem' }}
+                        >
+                          <RefreshCw size={14} className={isSyncingPhotos ? 'animate-spin' : ''} />
+                          {isSyncingPhotos ? 'Rotating Photos...' : '🔀 Shuffle 24 Fresh Wallpapers'}
+                        </button>
+                      </div>
+                    ) : (
+                      /* Connection Form with Enter Key Support */
+                      <form onSubmit={handleConnectAlbum} className="bg-album-form" style={{ marginBottom: '0.85rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <label className="settings-label" style={{ margin: 0 }}>Google Photos Album Link</label>
+                          {isEditingAlbumLink && config.googlePhotosSharedLink && (
+                            <button
+                              type="button"
+                              onClick={() => { setIsEditingAlbumLink(false); setAlbumInput(config.googlePhotosSharedLink); setAlbumError(''); }}
+                              style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '0.72rem' }}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                        <div className="bg-input-row">
+                          <input
+                            type="url"
+                            value={albumInput}
+                            onChange={(e) => { setAlbumInput(e.target.value); setAlbumError(''); }}
+                            placeholder="https://photos.app.goo.gl/... or photos.google.com/share/..."
+                            className="settings-input"
+                            style={{ flex: 1 }}
+                            autoFocus={isEditingAlbumLink}
+                          />
+                          <button
+                            type="submit"
+                            disabled={isConnectingAlbum || !albumInput.trim()}
+                            className="settings-btn settings-btn-primary"
+                            style={{ width: 'auto', padding: '0 1rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                          >
+                            {isConnectingAlbum ? (
+                              <>
+                                <RefreshCw size={14} className="animate-spin" /> Connecting...
+                              </>
+                            ) : (
+                              <>
+                                <Link2 size={14} /> Connect Album
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <p className="settings-subtext">
+                          In Google Photos, open your album ➔ tap <strong>Share</strong> ➔ tap <strong>Create link</strong>, then paste here and hit <strong>Enter</strong>.
+                        </p>
+                        {albumError && (
+                          <div className="bg-status-card error" style={{ padding: '0.6rem 0.75rem' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <AlertCircle size={14} /> {albumError}
+                            </span>
+                          </div>
+                        )}
+                        {albumSuccessMessage && (
+                          <p style={{ fontSize: '0.74rem', color: '#34d399', margin: 0, fontWeight: 600 }}>
+                            {albumSuccessMessage}
+                          </p>
+                        )}
+                      </form>
+                    )}
+                  </>
+                )}
+              </>
+            )}
 
             {/* Active Wallpaper Preview Gallery & Controls */}
             {backgrounds.length > 0 && (
@@ -1535,36 +1794,41 @@ export default function App() {
               </div>
             </div>
 
-            {/* Auto-Sync Schedule */}
-            <div className="settings-group" style={{ marginTop: '0.85rem' }}>
-              <label className="settings-label">Automated Cloud Rotation</label>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setConfig({ ...config, autoSyncIntervalHours: 12 })}
-                  className={`settings-btn ${(config.autoSyncIntervalHours ?? 12) === 12 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
-                >
-                  Every 12h
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfig({ ...config, autoSyncIntervalHours: 24 })}
-                  className={`settings-btn ${config.autoSyncIntervalHours === 24 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
-                >
-                  Every 24h
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfig({ ...config, autoSyncIntervalHours: 0 })}
-                  className={`settings-btn ${config.autoSyncIntervalHours === 0 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
-                  style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
-                >
-                  Manual
-                </button>
+            {/* Auto-Sync Schedule (Shown when Google Photos mode is active and connected) */}
+            {effectiveBgMode === 'google_photos' && config.googlePhotosSharedLink && (
+              <div className="settings-group" style={{ marginTop: '0.85rem' }}>
+                <label className="settings-label">Automated Cloud Rotation</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, autoSyncIntervalHours: 12 })}
+                    className={`settings-btn ${(config.autoSyncIntervalHours ?? 12) === 12 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                    style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
+                  >
+                    Every 12h
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, autoSyncIntervalHours: 24 })}
+                    className={`settings-btn ${config.autoSyncIntervalHours === 24 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                    style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
+                  >
+                    Every 24h
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfig({ ...config, autoSyncIntervalHours: 0 })}
+                    className={`settings-btn ${config.autoSyncIntervalHours === 0 ? 'settings-btn-primary' : 'settings-btn-secondary'}`}
+                    style={{ flex: 1, padding: '0.45rem', fontSize: '0.75rem' }}
+                  >
+                    Manual
+                  </button>
+                </div>
+                <p className="settings-subtext" style={{ fontSize: '0.7rem', marginTop: '0.35rem' }}>
+                  Automatically refreshes active wallpapers from your album pool on schedule.
+                </p>
               </div>
-            </div>
+            )}
           </div>
 
           {/* COLLAPSIBLE DEVELOPER SETTINGS */}
