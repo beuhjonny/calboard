@@ -148,7 +148,7 @@ export default function App() {
 
   // Clean up PWA cache on new builds without polluting URL
   useEffect(() => {
-    const CURRENT_VERSION = 'v3.9.3-live-photos-fix';
+    const CURRENT_VERSION = 'v3.9.4-clock-scale';
     const lastVersion = localStorage.getItem('calboard_pwa_version');
     if (lastVersion !== CURRENT_VERSION) {
       localStorage.setItem('calboard_pwa_version', CURRENT_VERSION);
