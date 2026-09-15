@@ -400,13 +400,12 @@ body {
 
 .clock-greeting {
   font-family: var(--font-body);
-  font-size: clamp(1rem, 1.6vw, 1.3rem);
+  font-size: clamp(0.95rem, 1.4vw, 1.25rem);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   color: rgba(255, 255, 255, 0.85);
-  line-height: 1.1;
-  margin-bottom: 0.15rem;
+  line-height: 1;
 }
 
 .clock-time {
@@ -414,20 +413,20 @@ body {
   display: inline-flex;
   align-items: baseline;
   gap: 0.5rem;
-  line-height: 0.95;
+  line-height: 0.88;
   color: white;
   white-space: nowrap;
 }
 
 .time-digits {
-  font-size: clamp(4.4rem, 8.5vw, 6.8rem);
+  font-size: clamp(5.8rem, 11vw, 8.8rem);
   font-weight: 800;
   letter-spacing: -0.04em;
-  line-height: 0.95;
+  line-height: 0.88;
 }
 
 .time-ampm {
-  font-size: clamp(1.8rem, 3.8vw, 3rem);
+  font-size: clamp(2rem, 3.8vw, 3.2rem);
   font-weight: 700;
   text-transform: uppercase;
   color: var(--color-text-secondary);
@@ -436,11 +435,10 @@ body {
 
 .clock-date {
   font-family: var(--font-body);
-  font-size: clamp(1.35rem, 2.2vw, 1.85rem);
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
   font-weight: 500;
   color: var(--color-text-secondary);
   line-height: 1.1;
-  margin-top: 0.25rem;
 }
 
 /* Weather Floating Card - Squat Horizontal Layout */
